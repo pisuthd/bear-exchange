@@ -14,10 +14,10 @@ function Footer() {
               className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#3eddfd] to-white bg-clip-text text-transparent mb-4 inline-block hover:opacity-80 transition-opacity"
               style={{ fontFamily: '"Orbitron", sans-serif' }}
             >
-              MadeInBear
+              BearEx
             </Link>
             <p className="text-[#94a3b8] text-sm leading-relaxed">
-              Confidential Lending for Institutional Capital
+              Private FX with Provable Best Execution on Midnight
             </p>
           </div>
 
@@ -27,26 +27,34 @@ function Footer() {
             <ul className="space-y-2">
               <li>
                 <Link
-                  to="/dashboard"
+                  to="/swap"
                   className="text-[#94a3b8] hover:text-[#3eddfd] transition-colors text-sm"
                 >
-                  Dashboard
+                  Swap
                 </Link>
               </li>
               <li>
                 <Link
-                  to="/credentials"
+                  to="/liquidity"
                   className="text-[#94a3b8] hover:text-[#3eddfd] transition-colors text-sm"
                 >
-                  Credentials
+                  Liquidity
                 </Link>
               </li>
               <li>
                 <Link
-                  to="/ask-ai"
+                  to="/tokens"
                   className="text-[#94a3b8] hover:text-[#3eddfd] transition-colors text-sm"
                 >
-                  Ask AI
+                  Tokens
+                </Link>
+              </li>
+               <li>
+                <Link
+                  to="https://github.com/pisuthd/bear-exchange"
+                  className="text-[#94a3b8] hover:text-[#3eddfd] transition-colors text-sm"
+                >
+                  GitHub
                 </Link>
               </li>
             </ul>
@@ -56,25 +64,18 @@ function Footer() {
         {/* Divider */}
         <div className="border-t border-[#334155] mb-6"></div>
 
-        {/* Bottom Row: Hackathon Badge & Copyright */}
+        {/* Bottom Row: Social Links, Hackathon Badge & Copyright */}
         <div className="flex flex-col md:flex-row justify-between items-center text-center md:text-left gap-4">
-          <p className="text-[#94a3b8] text-sm">
-            Made with ❤️ during Akindo Buildathon
-          </p>
+          {/* GitHub Link */}
+          <div className="flex items-center gap-4"> 
+            <p className="text-[#94a3b8] text-sm">
+              Made with ❤️ during INTO The MIDNIGHT Hackathon
+            </p>
+          </div>
           <div className="text-center md:text-right">
             <p className="text-[#94a3b8] text-sm mb-1">
-              © 2026
-              {` `}
-              <a
-                href="https://tamagolabs.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[#3eddfd] hover:text-[#2dd4d4] transition-colors text-sm font-medium"
-              >
-                Tamago Labs Japan
-              </a>
+              © 2026 Bear Exchange
             </p>
-
           </div>
         </div>
       </div>

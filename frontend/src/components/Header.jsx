@@ -10,8 +10,9 @@ function Header() {
   const { isConnected, walletAddress, isLoading, connectWallet, disconnectWallet, truncateAddress } = useWallet();
 
   const navItems = [
-    { label: 'Home', path: '/' },
+    // { label: 'Home', path: '/' },
     { label: 'Swap', path: '/swap' },
+    { label: 'Tokens', path: '/tokens' },
     { label: 'Liquidity', path: '/liquidity' }
   ];
 
@@ -81,12 +82,10 @@ function Header() {
 
           <div className="ml-auto flex items-center gap-4">
             {/* Network Status Indicator */}
-            {!isConnected && (
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-[#1e293b] rounded-lg border border-[#334155]">
-                <span className="w-2 h-2 bg-[#22c55e] rounded-full animate-pulse"></span>
-                <span className="text-sm text-[#cbd5e1] font-medium">Network: PreProd</span>
-              </div>
-            )}
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-[#1e293b] rounded-lg border border-[#334155]">
+              <span className="w-2 h-2 bg-[#22c55e] rounded-full animate-pulse"></span>
+              <span className="text-sm text-[#cbd5e1] font-medium">Network: PreProd</span>
+            </div>
 
             {isConnected ? (
               <>

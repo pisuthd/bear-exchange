@@ -7,40 +7,38 @@ function KeyFeatures() {
     {
       icon: (
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-            d="M3 10L12 4l9 6M4 10h16M6 10v7m4-7v7m4-7v7m4-7v7M4 17h16M2 20h20"
-          />
-        </svg>
-      ),
-      title: "Built for Institutional Capital",
-      description: "Institutions require more than just yield — they need privacy, control, and predictable risk. The protocol is designed to protect sensitive exposure, using Fhenix FHE. This ensures strategies remain confidential while enabling participation in on-chain markets."
-    },
-    {
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10V4a3 3 0 00-3-3v0a3 3 0 00-3 3v6M5 10h14a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2z" />
-        </svg>
-      ),
-      title: "On-Chain KYC & Credentialing",
-      description: "Access is permissioned through on-chain credentials. Institutions obtain verifiable KYC status without exposing sensitive identity data publicly, enabling seamless onboarding while maintaining privacy and control over disclosure."
-    },
-    {
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
         </svg>
       ),
-      title: "Compliance by Design (KYT, AML, Travel Rule)",
-      description: "Regulatory requirements are handled natively through selective disclosure. The system supports KYT, AML, and Travel Rule obligations by allowing controlled data sharing with counterparties and regulators—without compromising confidential position data."
+      title: "Zero-Knowledge Proof of Execution",
+      description: "Every swap generates a cryptographic proof that your execution price beats the oracle. Verify P_execution > P_oracle without revealing your trade size or counterparties. Private trades with public guarantees."
     },
     {
       icon: (
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       ),
-      title: "AI-Assisted Onboarding & Risk",
-      description: "Institutions are guided through onboarding, collateral setup, and borrowing decisions with AI assistance. The system helps assess risk, monitor positions, and optimize capital efficiency while respecting encrypted user data."
+      title: "Invisible Liquidity Pools",
+      description: "Trade against hidden liquidity that protects your exposure from MEV and front-running. Liquidity providers contribute to shielded pools while maintaining privacy, creating a truly private market for institutional FX."
+    },
+    {
+      icon: (
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+        </svg>
+      ),
+      title: "Provable Oracle-Beating Rates",
+      description: "Our matching algorithm guarantees execution at rates better than public oracles. Each trade includes verifiable proof that you received optimal pricing, eliminating the trust gap in decentralized trading."
+    },
+    {
+      icon: (
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+      ),
+      title: "Private Stablecoin Swaps",
+      description: "Exchange stablecoins (USDT, USDC, DAI) with complete privacy. Your transaction history, holdings, and trading strategies remain shielded on Midnight's data-protecting blockchain—only you control your data."
     }
   ];
 
