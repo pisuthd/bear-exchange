@@ -8,16 +8,40 @@
  * @module BearDEX
  */
 
-pragma language_version >= 0.20;
+pragma language_version >= 0.22;
 
 import CompactStandardLibrary;
 
 
 // ============================================================================
-// CONSTANTS
+// CONSTANTS - Token Names
 // ============================================================================
 
-// Token names for minting
+circuit getLPTokenName(): Bytes<32> {
+    return pad(32, "Pulse LP Token");
+}
+
+circuit getXTokenName(): Bytes<32> {
+    return pad(32, "Test token X");
+}
+
+circuit getXTokenColor(): Bytes<32> {
+    return tokenType(getXTokenName(), kernel.self());
+}
+
+circuit getYTokenName(): Bytes<32> {
+    return pad(32, "Test token Y");
+}
+
+circuit getYTokenColor(): Bytes<32> {
+    return tokenType(getYTokenName(), kernel.self());
+}
+
+circuit getLPTokenColor(): Bytes<32> {
+    return tokenType(getLPTokenName(), kernel.self());
+}
+
+// USD, JPY, EUR token names
 pure circuit getTokenUSDName(): Bytes<32> {
     return pad(32, "USD Token");
 }
@@ -30,7 +54,7 @@ pure circuit getTokenEURName(): Bytes<32> {
     return pad(32, "EUR Token");
 }
 
-// LP token names
+// LP token names for pools
 pure circuit getLPTokenUSDJPYName(): Bytes<32> {
     return pad(32, "LP-USDJPY");
 }
@@ -38,7 +62,7 @@ pure circuit getLPTokenUSDJPYName(): Bytes<32> {
 pure circuit getLPTokenUSDEURName(): Bytes<32> {
     return pad(32, "LP-USDEUR");
 }
- 
+
 
 // ============================================================================
 // STATE VARIABLES
@@ -50,6 +74,38 @@ export ledger admin: Either<ZswapCoinPublicKey, ContractAddress>;
 // Oracle prices for JPY and EUR relative to USD
 export ledger oracleJpyPrice: Uint<64>;
 export ledger oracleEurPrice: Uint<64>;
+
+
+// ============================================================================
+// AMM STATE - Pool Structure
+// ============================================================================
+
+struct PoolState {
+    xLiquidity: Uint<128>,
+    yLiquidity: Uint<128>,
+    lpCirculatingSupply: Uint<128>
+}
+
+// Pool states (K invariant remains private, calculated in circuits)
+export ledger poolUSDJPY: PoolState;
+export ledger poolUSDEUR: PoolState;
+
+// Pool initialization flags
+export ledger poolUSDJPYInitialized: Boolean;
+export ledger poolUSDEURInitialized: Boolean;
+
+
+// ============================================================================
+// POOL IDENTIFIERS
+// ============================================================================
+
+pure circuit getPoolUSDJPYId(): Bytes<32> {
+    return pad(32, "pool-usdjpy");
+}
+
+pure circuit getPoolUSDEURId(): Bytes<32> {
+    return pad(32, "pool-usdeur");
+}
 
 
 // ============================================================================
@@ -68,6 +124,21 @@ constructor() {
     // 1 USD = 150 JPY, 1 USD = 0.92 EUR
     oracleJpyPrice = disclose(150000);
     oracleEurPrice = disclose(92000);
+    
+    // Initialize pool states
+    poolUSDJPY = PoolState {
+        xLiquidity: 0,
+        yLiquidity: 0,
+        lpCirculatingSupply: 0
+    };
+    poolUSDJPYInitialized = false;
+    
+    poolUSDEUR = PoolState {
+        xLiquidity: 0,
+        yLiquidity: 0,
+        lpCirculatingSupply: 0
+    };
+    poolUSDEURInitialized = false;
 }
 
 
@@ -76,7 +147,7 @@ constructor() {
 // ============================================================================
 
 /**
- * Mints a shielded token of the specified type.
+ * Mints a shielded token of specified type.
  * 
  * @param tokenName The name identifier of the token to mint (e.g., TOKEN_USD, TOKEN_JPY, TOKEN_EUR)
  * @param amount The amount of tokens to mint (must be positive)
@@ -184,8 +255,628 @@ export circuit updateOraclePrices(
 
 
 // ============================================================================
+// AMM MODULE - USD/JPY Pool
+// ============================================================================
+
+/**
+ * Initializes the USD/JPY pool with initial liquidity.
+ * Only admin can create pools.
+ * 
+ * @param xIn Initial USD tokens
+ * @param yIn Initial JPY tokens
+ * @param lpOut LP tokens to mint
+ * @param recipient Recipient of LP tokens
+ * @param nonce Unique nonce
+ */
+export circuit initLiquidityUSDJPY(
+    xIn: Uint<64>,
+    yIn: Uint<64>,
+    lpOut: Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce: Bytes<32>
+): [] {
+    // Verify caller is the admin
+    const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+    assert(caller == admin, "Unauthorized: only admin can initialize pools");
+    
+    // Check if pool is already initialized
+    assert(!poolUSDJPYInitialized, "Pool USD-JPY already initialized");
+    
+    // Validate LP tokens (lpOut^2 <= xIn * yIn)
+    const lpOut128 = disclose(lpOut) as Uint<128>;
+    const xIn128 = disclose(xIn) as Uint<128>;
+    const yIn128 = disclose(yIn) as Uint<128>;
+    const lpOutSquared = (lpOut128 as Uint<64>) * (lpOut128 as Uint<64>);
+    const xInY = (xIn128 as Uint<64>) * (yIn128 as Uint<64>);
+    assert(lpOutSquared <= xInY, "Too many LP tokens taken");
+    
+    // Create initial pool state
+    const initialPool: PoolState = PoolState {
+        xLiquidity: disclose(xIn),
+        yLiquidity: disclose(yIn),
+        lpCirculatingSupply: disclose(lpOut)
+    };
+    
+    // Mint LP tokens to recipient
+    mintShieldedToken(
+        getLPTokenUSDJPYName(),
+        disclose(lpOut),
+        disclose(nonce),
+        disclose(recipient)
+    );
+    
+    // Receive USD liquidity
+    receiveShielded(ShieldedCoinInfo{
+        disclose(nonce),
+        getTokenUSDName(),
+        initialPool.xLiquidity
+    });
+    
+    // Receive JPY liquidity
+    receiveShielded(ShieldedCoinInfo{
+        disclose(nonce),
+        getTokenJPYName(),
+        initialPool.yLiquidity
+    });
+    
+    // Update pool state
+    poolUSDJPY = initialPool;
+    poolUSDJPYInitialized = true;
+}
+
+/**
+ * Adds liquidity to the USD/JPY pool.
+ * 
+ * @param xIn USD tokens to add
+ * @param yIn JPY tokens to add
+ * @param lpOut LP tokens to mint
+ * @param recipient Recipient of LP tokens
+ * @param nonce Unique nonce
+ */
+export circuit addLiquidityUSDJPY(
+    xIn: Uint<64>,
+    yIn: Uint<64>,
+    lpOut: Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce: Bytes<32>
+): [] {
+    assert(poolUSDJPYInitialized, "Pool USD-JPY not initialized");
+    
+    const pool = poolUSDJPY;
+    const xLiquidityAdded = disclose(xIn);
+    const yLiquidityAdded = disclose(yIn);
+    
+    // Validate LP tokens using multiplication (avoiding division)
+    if (xLiquidityAdded * pool.yLiquidity < yLiquidityAdded * pool.xLiquidity) {
+        const xLhs = disclose(lpOut) * pool.xLiquidity;
+        const xRhs = xLiquidityAdded * pool.lpCirculatingSupply;
+        assert(xLhs <= xRhs, "Too many LP tokens taken (bound by USD)");
+    } else {
+        const yLhs = disclose(lpOut) * pool.yLiquidity;
+        const yRhs = yLiquidityAdded * pool.lpCirculatingSupply;
+        assert(yLhs <= yRhs, "Too many LP tokens taken (bound by JPY)");
+    }
+    
+    // Create updated pool state
+    const updatedPool: PoolState = PoolState {
+        xLiquidity: pool.xLiquidity + xLiquidityAdded as Uint<128>,
+        yLiquidity: pool.yLiquidity + yLiquidityAdded as Uint<128>,
+        lpCirculatingSupply: pool.lpCirculatingSupply + disclose(lpOut) as Uint<128>
+    };
+    
+    // Mint LP tokens
+    mintShieldedToken(
+        getLPTokenUSDJPYName(),
+        disclose(lpOut),
+        disclose(nonce),
+        disclose(recipient)
+    );
+    
+    // Receive USD tokens
+    receiveShielded(
+        ShieldedCoinInfo{
+            disclose(nonce),
+            getTokenUSDName(),
+            xLiquidityAdded
+        }
+    );
+    
+    // Receive JPY tokens
+    receiveShielded(
+        ShieldedCoinInfo{
+            disclose(nonce),
+            getTokenJPYName(),
+            yLiquidityAdded
+        }
+    );
+    
+    // Update pool state
+    poolUSDJPY = updatedPool;
+}
+
+/**
+ * Removes liquidity from the USD/JPY pool.
+ * 
+ * @param lpIn LP tokens to burn
+ * @param xOut USD tokens to receive
+ * @param yOut JPY tokens to receive
+ * @param recipient Recipient of tokens
+ * @param nonce Unique nonce
+ */
+export circuit removeLiquidityUSDJPY(
+    lpIn: Uint<64>,
+    xOut: Uint<64>,
+    yOut: Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce: Bytes<32>
+): [] {
+    const pool = poolUSDJPY;
+    
+    // Validate tokens using multiplication (avoiding division)
+    const xLhs = disclose(xOut) * pool.lpCirculatingSupply;
+    const xRhs = disclose(lpIn) * pool.xLiquidity;
+    assert(xLhs <= xRhs, "Too many USD tokens taken");
+    
+    const yLhs = disclose(yOut) * pool.lpCirculatingSupply;
+    const yRhs = disclose(lpIn) * pool.yLiquidity;
+    assert(yLhs <= yRhs, "Too many JPY tokens taken");
+    
+    // Create updated pool state
+    const updatedPool: PoolState = PoolState {
+        xLiquidity: pool.xLiquidity - disclose(xOut),
+        yLiquidity: pool.yLiquidity - disclose(yOut),
+        lpCirculatingSupply: pool.lpCirculatingSupply - disclose(lpIn)
+    };
+    
+    // Receive LP tokens
+    receiveShielded(
+        ShieldedCoinInfo{
+            disclose(nonce),
+            getLPTokenUSDJPYName(),
+            disclose(lpIn)
+        }
+    );
+    
+    // Mint USD tokens
+    mintShieldedToken(
+        getTokenUSDName(),
+        disclose(xOut),
+        disclose(nonce),
+        disclose(recipient)
+    );
+    
+    // Mint JPY tokens
+    mintShieldedToken(
+        getTokenJPYName(),
+        disclose(yOut),
+        disclose(nonce),
+        disclose(recipient)
+    );
+    
+    // Update pool state
+    poolUSDJPY = updatedPool;
+}
+
+/**
+ * Swaps USD for JPY.
+ * 
+ * @param xIn USD tokens to swap
+ * @param xFee Fee in USD
+ * @param yOut JPY tokens to receive
+ * @param recipient Recipient of JPY tokens
+ * @param nonce Unique nonce
+ */
+export circuit swapUSDToJPY(
+    xIn: Uint<64>,
+    xFee: Uint<64>,
+    yOut: Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce: Bytes<32>
+): [] {
+    assert(poolUSDJPYInitialized, "Pool USD-JPY not initialized");
+    
+    const pool = poolUSDJPY;
+    const initialK = calcK(pool.xLiquidity, pool.yLiquidity);
+    
+    // Create updated pool state
+    const updatedPool: PoolState = PoolState {
+        xLiquidity: pool.xLiquidity + disclose(xIn - xFee) as Uint<128>,
+        yLiquidity: pool.yLiquidity - disclose(yOut),
+        lpCirculatingSupply: pool.lpCirculatingSupply
+    };
+    
+    // Receive USD tokens
+    receiveShielded(ShieldedCoinInfo{
+        disclose(nonce),
+        getTokenUSDName(),
+        disclose(xIn)
+    });
+    
+    // Mint JPY tokens
+    mintShieldedToken(
+        getTokenJPYName(),
+        disclose(yOut),
+        disclose(nonce),
+        disclose(recipient)
+    );
+    
+    const finalK = calcK(updatedPool.xLiquidity, updatedPool.yLiquidity);
+    assert(finalK >= initialK, "Final K smaller than initial K");
+    
+    // Update pool state
+    poolUSDJPY = updatedPool;
+}
+
+/**
+ * Swaps JPY for USD.
+ * 
+ * @param yIn JPY tokens to swap
+ * @param xFee Fee in USD
+ * @param xOut USD tokens to receive
+ * @param recipient Recipient of USD tokens
+ * @param nonce Unique nonce
+ */
+export circuit swapJPYToUSD(
+    yIn: Uint<64>,
+    xFee: Uint<64>,
+    xOut: Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce: Bytes<32>
+): [] {
+    assert(poolUSDJPYInitialized, "Pool USD-JPY not initialized");
+    
+    const pool = poolUSDJPY;
+    const initialK = calcK(pool.xLiquidity, pool.yLiquidity);
+    
+    // Create updated pool state
+    const updatedPool: PoolState = PoolState {
+        xLiquidity: pool.xLiquidity - disclose(xOut + xFee),
+        yLiquidity: pool.yLiquidity + disclose(yIn) as Uint<128>,
+        lpCirculatingSupply: pool.lpCirculatingSupply
+    };
+    
+    // Mint USD tokens
+    mintShieldedToken(
+        getTokenUSDName(),
+        disclose(xOut),
+        disclose(nonce),
+        disclose(recipient)
+    );
+    
+    // Receive JPY tokens
+    receiveShielded(
+        ShieldedCoinInfo{
+            disclose(nonce),
+            getTokenJPYName(),
+            disclose(yIn)
+        }
+    );
+    
+    const finalK = calcK(updatedPool.xLiquidity, updatedPool.yLiquidity);
+    assert(finalK >= initialK, "Final K smaller than initial K");
+    
+    // Update pool state
+    poolUSDJPY = updatedPool;
+}
+
+
+// ============================================================================
+// AMM MODULE - USD/EUR Pool
+// ============================================================================
+
+/**
+ * Initializes the USD/EUR pool with initial liquidity.
+ * Only admin can create pools.
+ * 
+ * @param xIn Initial USD tokens
+ * @param yIn Initial EUR tokens
+ * @param lpOut LP tokens to mint
+ * @param recipient Recipient of LP tokens
+ * @param nonce Unique nonce
+ */
+export circuit initLiquidityUSDEUR(
+    xIn: Uint<64>,
+    yIn: Uint<64>,
+    lpOut: Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce: Bytes<32>
+): [] {
+    // Verify caller is the admin
+    const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+    assert(caller == admin, "Unauthorized: only admin can initialize pools");
+    
+    // Check if pool is already initialized
+    assert(!poolUSDEURInitialized, "Pool USD-EUR already initialized");
+    
+    // Validate LP tokens (lpOut^2 <= xIn * yIn)
+    const lpOut128 = disclose(lpOut) as Uint<128>;
+    const xIn128 = disclose(xIn) as Uint<128>;
+    const yIn128 = disclose(yIn) as Uint<128>;
+    const lpOutSquared = (lpOut128 as Uint<64>) * (lpOut128 as Uint<64>);
+    const xInY = (xIn128 as Uint<64>) * (yIn128 as Uint<64>);
+    assert(lpOutSquared <= xInY, "Too many LP tokens taken");
+    
+    // Create initial pool state
+    const initialPool: PoolState = PoolState {
+        xLiquidity: disclose(xIn),
+        yLiquidity: disclose(yIn),
+        lpCirculatingSupply: disclose(lpOut)
+    };
+    
+    // Mint LP tokens to recipient
+    mintShieldedToken(
+        getLPTokenUSDEURName(),
+        disclose(lpOut),
+        disclose(nonce),
+        disclose(recipient)
+    );
+    
+    // Receive USD liquidity
+    receiveShielded(ShieldedCoinInfo{
+        disclose(nonce),
+        getTokenUSDName(),
+        initialPool.xLiquidity
+    });
+    
+    // Receive EUR liquidity
+    receiveShielded(ShieldedCoinInfo{
+        disclose(nonce),
+        getTokenEURName(),
+        initialPool.yLiquidity
+    });
+    
+    // Update pool state
+    poolUSDEUR = initialPool;
+    poolUSDEURInitialized = true;
+}
+
+/**
+ * Adds liquidity to the USD/EUR pool.
+ * 
+ * @param xIn USD tokens to add
+ * @param yIn EUR tokens to add
+ * @param lpOut LP tokens to mint
+ * @param recipient Recipient of LP tokens
+ * @param nonce Unique nonce
+ */
+export circuit addLiquidityUSDEUR(
+    xIn: Uint<64>,
+    yIn: Uint<64>,
+    lpOut: Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce: Bytes<32>
+): [] {
+    assert(poolUSDEURInitialized, "Pool USD-EUR not initialized");
+    
+    const pool = poolUSDEUR;
+    const xLiquidityAdded = disclose(xIn);
+    const yLiquidityAdded = disclose(yIn);
+    
+    // Validate LP tokens using multiplication (avoiding division)
+    if (xLiquidityAdded * pool.yLiquidity < yLiquidityAdded * pool.xLiquidity) {
+        const xLhs = disclose(lpOut) * pool.xLiquidity;
+        const xRhs = xLiquidityAdded * pool.lpCirculatingSupply;
+        assert(xLhs <= xRhs, "Too many LP tokens taken (bound by USD)");
+    } else {
+        const yLhs = disclose(lpOut) * pool.yLiquidity;
+        const yRhs = yLiquidityAdded * pool.lpCirculatingSupply;
+        assert(yLhs <= yRhs, "Too many LP tokens taken (bound by EUR)");
+    }
+    
+    // Create updated pool state
+    const updatedPool: PoolState = PoolState {
+        xLiquidity: pool.xLiquidity + xLiquidityAdded as Uint<128>,
+        yLiquidity: pool.yLiquidity + yLiquidityAdded as Uint<128>,
+        lpCirculatingSupply: pool.lpCirculatingSupply + disclose(lpOut) as Uint<128>
+    };
+    
+    // Mint LP tokens
+    mintShieldedToken(
+        getLPTokenUSDEURName(),
+        disclose(lpOut),
+        disclose(nonce),
+        disclose(recipient)
+    );
+    
+    // Receive USD tokens
+    receiveShielded(
+        ShieldedCoinInfo{
+            disclose(nonce),
+            getTokenUSDName(),
+            xLiquidityAdded
+        }
+    );
+    
+    // Receive EUR tokens
+    receiveShielded(
+        ShieldedCoinInfo{
+            disclose(nonce),
+            getTokenEURName(),
+            yLiquidityAdded
+        }
+    );
+    
+    // Update pool state
+    poolUSDEUR = updatedPool;
+}
+
+/**
+ * Removes liquidity from the USD/EUR pool.
+ * 
+ * @param lpIn LP tokens to burn
+ * @param xOut USD tokens to receive
+ * @param yOut EUR tokens to receive
+ * @param recipient Recipient of tokens
+ * @param nonce Unique nonce
+ */
+export circuit removeLiquidityUSDEUR(
+    lpIn: Uint<64>,
+    xOut: Uint<64>,
+    yOut: Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce: Bytes<32>
+): [] {
+    const pool = poolUSDEUR;
+    
+    // Validate tokens using multiplication (avoiding division)
+    const xLhs = disclose(xOut) * pool.lpCirculatingSupply;
+    const xRhs = disclose(lpIn) * pool.xLiquidity;
+    assert(xLhs <= xRhs, "Too many USD tokens taken");
+    
+    const yLhs = disclose(yOut) * pool.lpCirculatingSupply;
+    const yRhs = disclose(lpIn) * pool.yLiquidity;
+    assert(yLhs <= yRhs, "Too many EUR tokens taken");
+    
+    // Create updated pool state
+    const updatedPool: PoolState = PoolState {
+        xLiquidity: pool.xLiquidity - disclose(xOut),
+        yLiquidity: pool.yLiquidity - disclose(yOut),
+        lpCirculatingSupply: pool.lpCirculatingSupply - disclose(lpIn)
+    };
+    
+    // Receive LP tokens
+    receiveShielded(
+        ShieldedCoinInfo{
+            disclose(nonce),
+            getLPTokenUSDEURName(),
+            disclose(lpIn)
+        }
+    );
+    
+    // Mint USD tokens
+    mintShieldedToken(
+        getTokenUSDName(),
+        disclose(xOut),
+        disclose(nonce),
+        disclose(recipient)
+    );
+    
+    // Mint EUR tokens
+    mintShieldedToken(
+        getTokenEURName(),
+        disclose(yOut),
+        disclose(nonce),
+        disclose(recipient)
+    );
+    
+    // Update pool state
+    poolUSDEUR = updatedPool;
+}
+
+/**
+ * Swaps USD for EUR.
+ * 
+ * @param xIn USD tokens to swap
+ * @param xFee Fee in USD
+ * @param yOut EUR tokens to receive
+ * @param recipient Recipient of EUR tokens
+ * @param nonce Unique nonce
+ */
+export circuit swapUSDToEUR(
+    xIn: Uint<64>,
+    xFee: Uint<64>,
+    yOut: Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce: Bytes<32>
+): [] {
+    assert(poolUSDEURInitialized, "Pool USD-EUR not initialized");
+    
+    const pool = poolUSDEUR;
+    const initialK = calcK(pool.xLiquidity, pool.yLiquidity);
+    
+    // Create updated pool state
+    const updatedPool: PoolState = PoolState {
+        xLiquidity: pool.xLiquidity + disclose(xIn - xFee) as Uint<128>,
+        yLiquidity: pool.yLiquidity - disclose(yOut),
+        lpCirculatingSupply: pool.lpCirculatingSupply
+    };
+    
+    // Receive USD tokens
+    receiveShielded(ShieldedCoinInfo{
+        disclose(nonce),
+        getTokenUSDName(),
+        disclose(xIn)
+    });
+    
+    // Mint EUR tokens
+    mintShieldedToken(
+        getTokenEURName(),
+        disclose(yOut),
+        disclose(nonce),
+        disclose(recipient)
+    );
+    
+    const finalK = calcK(updatedPool.xLiquidity, updatedPool.yLiquidity);
+    assert(finalK >= initialK, "Final K smaller than initial K");
+    
+    // Update pool state
+    poolUSDEUR = updatedPool;
+}
+
+/**
+ * Swaps EUR for USD.
+ * 
+ * @param yIn EUR tokens to swap
+ * @param xFee Fee in USD
+ * @param xOut USD tokens to receive
+ * @param recipient Recipient of USD tokens
+ * @param nonce Unique nonce
+ */
+export circuit swapEURToUSD(
+    yIn: Uint<64>,
+    xFee: Uint<64>,
+    xOut: Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce: Bytes<32>
+): [] {
+    assert(poolUSDEURInitialized, "Pool USD-EUR not initialized");
+    
+    const pool = poolUSDEUR;
+    const initialK = calcK(pool.xLiquidity, pool.yLiquidity);
+    
+    // Create updated pool state
+    const updatedPool: PoolState = PoolState {
+        xLiquidity: pool.xLiquidity - disclose(xOut + xFee),
+        yLiquidity: pool.yLiquidity + disclose(yIn) as Uint<128>,
+        lpCirculatingSupply: pool.lpCirculatingSupply
+    };
+    
+    // Mint USD tokens
+    mintShieldedToken(
+        getTokenUSDName(),
+        disclose(xOut),
+        disclose(nonce),
+        disclose(recipient)
+    );
+    
+    // Receive EUR tokens
+    receiveShielded(
+        ShieldedCoinInfo{
+            disclose(nonce),
+            getTokenEURName(),
+            disclose(yIn)
+        }
+    );
+    
+    const finalK = calcK(updatedPool.xLiquidity, updatedPool.yLiquidity);
+    assert(finalK >= initialK, "Final K smaller than initial K");
+    
+    // Update pool state
+    poolUSDEUR = updatedPool;
+}
+
+
+// ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * Calculates the constant-product invariant: K = x * y.
+ * K is private as it's calculated inside the circuit.
+ */
+pure circuit calcK(x: Uint<128>, y: Uint<128>): Uint<248> {
+    return ((x as Uint<124>) * (y as Uint<124>)) as Uint<248>;
+}
 
 /**
  * Returns the contract's shielded address for internal operations.
@@ -194,12 +885,6 @@ pure circuit getShieldedContractAddress(): Either<ZswapCoinPublicKey, ContractAd
     return right<ZswapCoinPublicKey, ContractAddress>(kernel.self());
 }
 
-/**
- * Calculates the constant-product invariant: K = x * y.
- */
-pure circuit calcK(x: Uint<64>, y: Uint<64>): Uint<128> {
-    return ((x as Uint<64>) * (y as Uint<64>)) as Uint<128>;
-} 
 
 // ============================================================================
 // ADMIN MODULE
@@ -221,4 +906,3 @@ export circuit transferAdmin(
     // Transfer admin rights
     admin = disclose(newAdmin);
 }
- 
