@@ -1,0 +1,224 @@
+/**
+ * BearDEX.compact
+ * 
+ * A decentralized exchange contract for shielded token minting and oracle price management.
+ * Supports minting of USD, JPY, and EUR tokens with privacy-preserving features using
+ * Midnight's shielded token system.
+ * 
+ * @module BearDEX
+ */
+
+pragma language_version >= 0.20;
+
+import CompactStandardLibrary;
+
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+// Token names for minting
+pure circuit getTokenUSDName(): Bytes<32> {
+    return pad(32, "USD Token");
+}
+
+pure circuit getTokenJPYName(): Bytes<32> {
+    return pad(32, "JPY Token");
+}
+
+pure circuit getTokenEURName(): Bytes<32> {
+    return pad(32, "EUR Token");
+}
+
+// LP token names
+pure circuit getLPTokenUSDJPYName(): Bytes<32> {
+    return pad(32, "LP-USDJPY");
+}
+
+pure circuit getLPTokenUSDEURName(): Bytes<32> {
+    return pad(32, "LP-USDEUR");
+}
+ 
+
+// ============================================================================
+// STATE VARIABLES
+// ============================================================================
+
+// Admin address authorized to update oracle prices
+export ledger admin: Either<ZswapCoinPublicKey, ContractAddress>;
+
+// Oracle prices for JPY and EUR relative to USD
+export ledger oracleJpyPrice: Uint<64>;
+export ledger oracleEurPrice: Uint<64>;
+
+
+// ============================================================================
+// CONSTRUCTOR
+// ============================================================================
+
+/**
+ * Initializes the BearDEX contract with default settings.
+ * Sets initial oracle prices and assigns the contract deployer as admin.
+ */
+constructor() {
+    // Set the contract deployer as the initial admin
+    admin = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+    
+    // Initialize oracle prices (scaled by 1000 for precision)
+    // 1 USD = 150 JPY, 1 USD = 0.92 EUR
+    oracleJpyPrice = disclose(150000);
+    oracleEurPrice = disclose(92000);
+}
+
+
+// ============================================================================
+// TOKEN MODULE
+// ============================================================================
+
+/**
+ * Mints a shielded token of the specified type.
+ * 
+ * @param tokenName The name identifier of the token to mint (e.g., TOKEN_USD, TOKEN_JPY, TOKEN_EUR)
+ * @param amount The amount of tokens to mint (must be positive)
+ * @param recipient The recipient address (either shielded public key or contract address)
+ * @param nonce A unique nonce to prevent replay attacks
+ */
+export circuit mintMockToken(
+    tokenName: Bytes<32>,
+    amount: Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce: Bytes<32>
+): [] {
+    assert(amount > 0, "Amount must be positive");
+    
+    mintShieldedToken(
+        disclose(tokenName),
+        disclose(amount),
+        disclose(nonce),
+        disclose(recipient)
+    );
+}
+
+/**
+ * Convenience function to mint USD tokens.
+ * 
+ * @param amount The amount of USD tokens to mint (must be positive)
+ * @param recipient The recipient address
+ * @param nonce A unique nonce to prevent replay attacks
+ */
+export circuit mintUSD(
+    amount: Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce: Bytes<32>
+): [] {
+    mintMockToken(getTokenUSDName(), amount, recipient, nonce);
+}
+
+/**
+ * Convenience function to mint JPY tokens.
+ * 
+ * @param amount The amount of JPY tokens to mint (must be positive)
+ * @param recipient The recipient address
+ * @param nonce A unique nonce to prevent replay attacks
+ */
+export circuit mintJPY(
+    amount: Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce: Bytes<32>
+): [] {
+    mintMockToken(getTokenJPYName(), amount, recipient, nonce);
+}
+
+/**
+ * Convenience function to mint EUR tokens.
+ * 
+ * @param amount The amount of EUR tokens to mint (must be positive)
+ * @param recipient The recipient address
+ * @param nonce A unique nonce to prevent replay attacks
+ */
+export circuit mintEUR(
+    amount: Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce: Bytes<32>
+): [] {
+    mintMockToken(getTokenEURName(), amount, recipient, nonce);
+}
+
+
+// ============================================================================
+// ORACLE MODULE
+// ============================================================================
+
+/**
+ * Retrieves the current oracle prices for all supported tokens.
+ * 
+ * @returns A tuple containing USD base price (always 1000), JPY price, and EUR price
+ */
+export circuit getOraclePrices(): [Uint<64>, Uint<64>, Uint<64>] {
+    // USD is the base currency with fixed price of 1000
+    return [1000, oracleJpyPrice, oracleEurPrice];
+}
+
+/**
+ * Updates the oracle prices for JPY and EUR relative to USD.
+ * Only the admin address can call this function.
+ * 
+ * @param usd_jpy_price The new exchange rate: 1 USD = X JPY (scaled by 1000)
+ * @param usd_eur_price The new exchange rate: 1 USD = X EUR (scaled by 1000)
+ */
+export circuit updateOraclePrices(
+    usd_jpy_price: Uint<64>,
+    usd_eur_price: Uint<64>
+): [] {
+    // Verify caller is the admin
+    const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+    assert(caller == admin, "Unauthorized: only admin can update prices");
+    
+    // Validate prices are reasonable (must be positive)
+    assert(usd_jpy_price > 0, "JPY price must be positive");
+    assert(usd_eur_price > 0, "EUR price must be positive");
+    
+    oracleJpyPrice = disclose(usd_jpy_price);
+    oracleEurPrice = disclose(usd_eur_price);
+}
+
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Returns the contract's shielded address for internal operations.
+ */
+pure circuit getShieldedContractAddress(): Either<ZswapCoinPublicKey, ContractAddress> {
+    return right<ZswapCoinPublicKey, ContractAddress>(kernel.self());
+}
+
+/**
+ * Calculates the constant-product invariant: K = x * y.
+ */
+pure circuit calcK(x: Uint<64>, y: Uint<64>): Uint<128> {
+    return ((x as Uint<64>) * (y as Uint<64>)) as Uint<128>;
+} 
+
+// ============================================================================
+// ADMIN MODULE
+// ============================================================================
+
+/**
+ * Transfers admin rights to a new address.
+ * Only the current admin can call this function.
+ * 
+ * @param newAdmin The new admin address (either contract address or user address)
+ */
+export circuit transferAdmin(
+    newAdmin: Either<ZswapCoinPublicKey, ContractAddress>
+): [] {
+    // Verify caller is the current admin
+    const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+    assert(caller == admin, "Unauthorized: only admin can transfer admin rights");
+    
+    // Transfer admin rights
+    admin = disclose(newAdmin);
+}
+ 
