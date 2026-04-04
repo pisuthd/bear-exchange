@@ -16,12 +16,15 @@
     }
   },
   "scripts": {
-    "compact": "compact compile src/counter.compact src/managed/counter && compact compile src/BearDEX.compact src/managed/beardex",
-    "compact:beardex": "compact compile src/BearDEX.compact src/managed/beardex",
+    "compact": "compact compile src/BearDEX.compact src/managed/beardex",
     "test": "vitest run",
     "test:compile": "npm run compact && vitest run",
     "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/counter.compact ./dist && cp ./src/BearDEX.compact ./dist",
     "lint": "eslint src",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "deploy:preprod": "tsx src/deploy-preprod.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0"
   }
 }
