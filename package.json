@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "frontend",
-    "contract"
+    "cli",
+    "contract",
+    "frontend"
   ],
   "devDependencies": {
     "@eslint/js": "^9.39.2",

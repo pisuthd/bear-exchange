@@ -1,7 +1,6 @@
-pragma language_version >= 0.22;
+pragma language_version >= 0.20;
 
 import CompactStandardLibrary;
-
 
 // ============================================================================
 // TOKEN DOMAIN SEPARATORS
@@ -23,187 +22,140 @@ pure circuit getLPTokenName(): Bytes<32> {
 // PUBLIC LEDGER STATE
 // ============================================================================
 
-// Owner's public key
-export sealed ledger owner: Bytes<32>;
+// Collected fees 
+export ledger usdFees: Uint<128>;
+export ledger jpyFees: Uint<128>;
 
-// Total supply of LP tokens
+// Pool reserves 
+export ledger reserveUSD: Uint<128>;
+export ledger reserveJPY: Uint<128>;
+
+// LP token supply 
 export ledger lpTotalSupply: Uint<128>;
 
-// Hashed reserve values (public commits to private reserves)
-export ledger hashedReserveUSD: Bytes<32>;
-export ledger hashedReserveJPY: Bytes<32>;
-
-// Oracle price for USD/JPY
+// Oracle price for USD/JPY (scaled by SCALE=10000)
+// Example: 1500000 means 1 USD = 150.00 JPY
 export ledger oracleJpyPrice: Uint<64>;
 
 // Pool initialization flag
 export ledger poolInitialized: Boolean;
 
 // ============================================================================
-// WITNESS FUNCTIONS
-// ============================================================================
-// Witness functions provide private inputs to circuits. These values are:
-// - Known to the prover (user/caller)
-// - Revealed ONLY to the circuit during proof generation
-// - NEVER exposed on-chain or in public state
-// 
-// This is the core of Midnight's privacy model: the circuit verifies
-// computations over private data without revealing that data publicly.
-
-// The caller's secret key for authentication
-witness localSk(): Bytes<32>;
-
-// Current USD pool reserves (private - witness-based)
-// This allows the pool operator to provide the actual reserve values
-// to the circuit for verification without making them public
-witness localReserveUSD(): Uint<128>;
-
-// Current JPY pool reserves (private - witness-based)
-// Same as above, for JPY reserves
-witness localReserveJPY(): Uint<128>;
-
-// ============================================================================
 // CONSTRUCTOR
 // ============================================================================
 
 constructor() {
-
-    // Derive owner's public key from secret key witness
-    // Store in sealed ledger for privacy and access control
-    const _sk = localSk();
-    const pubKey = getDappPubKey(_sk);
-    owner = disclose(pubKey);
-
+    // Initialize fees and reserves to zero
+    usdFees = 0;
+    jpyFees = 0;
+    reserveUSD = 0;
+    reserveJPY = 0;
+    
     // Initialize LP token supply to zero
-    lpTotalSupply = disclose(0);
-
-    // Initialize hashed reserves to zero (commitment to empty pool)
-    hashedReserveUSD = disclose(commitAmount(0));
-    hashedReserveJPY = disclose(commitAmount(0));
-
+    lpTotalSupply = 0;
+    
     // Set default oracle price: 1 USD = 150.00 JPY (scaled by SCALE=10000)
     oracleJpyPrice = disclose(1500000);
     
-    // Pool starts uninitialized - requires explicit initPool call
+    // Pool starts uninitialized
     poolInitialized = disclose(false);
 }
-
 
 // ============================================================================
 // INTERNAL HELPERS
 // ============================================================================
 
-// Derive the DApp's public key from a secret key
-// Used for authentication: proving the caller is the contract owner
-// Uses domain separation ("BearDEX:pk:") to prevent key collisions
-export circuit getDappPubKey(sk: Bytes<32>): Bytes<32> {
-    return persistentHash<Vector<2, Bytes<32>>>([
-        pad(32, "BearDEX:pk:"),
-        sk
-    ]);
-}
-
-// Commit to an amount without revealing it
-// This creates a hash that serves as a public commitment to a private value
-// Used to prove that reserves changed without revealing the amounts
-// 
-// FIXME: In production, use an external salt instead of hardcoded "BearDEX:salt"
-// This would make the commitment more secure by preventing pre-computation attacks
-circuit commitAmount(amount: Uint<64>): Bytes<32> {
-    const amountBytes: Bytes<32> = amount as Bytes<32>;
-    const salt = pad(32, "BearDEX:salt");
-    return persistentHash<Vector<2, Bytes<32>>>([
-        amountBytes,
-        salt
-    ]);
-}
-
 // Calculate the K invariant for constant product AMM: K = x * y
 // This invariant must remain constant (or increase) for all swaps
-// 
-// We cast to Uint<124> before multiplying to prevent overflow:
-// - Uint<128> * Uint<128> could overflow Uint<256>
-// - Uint<124> * Uint<124> fits in Uint<248> (124 + 124 = 248 bits)
-// 
-// If K decreases after a swap, it means liquidity was drained
-// (the pool is being exploited or has a bug)
 pure circuit calcK(x: Uint<128>, y: Uint<128>): Uint<248> {
     return ((x as Uint<124>) * (y as Uint<124>)) as Uint<248>;
 }
 
-// ============================================================================
-// ORACLE RATE VERIFICATION
-// ============================================================================
-
-// USD to JPY: verify swap rate >= oracle rate
-// Cross-multiplied: yOut * SCALE >= oracleRate * xIn
-export circuit verifyUSDToJPYOracle(
-    yOut: Uint<64>,
-    xIn: Uint<64>
+// Check if post-trade reserves are within 1% of oracle price
+// Used to determine dynamic fee tier
+// Returns true if balanced (use 0.5% fee), false if imbalanced (use 1% fee)
+// Uses only multiplication - no division
+pure circuit isPostTradeBalanced(
+    newReserveUSD: Uint<128>,
+    newReserveJPY: Uint<128>,
+    oraclePrice: Uint<64>
 ): Boolean {
-    const yOut128 = disclose(yOut) as Uint<64>;
-    const xIn128 = disclose(xIn) as Uint<64>;
-    const oracleRate = oracleJpyPrice as Uint<64>;
-    const SCALE = 10000 as Uint<64>;
+    // Avoid division by zero
+    if (newReserveUSD == 0 || oraclePrice == 0) {
+        return false;
+    }
     
-    const lhs = yOut128 * SCALE;
-    const rhs = oracleRate * xIn128;
-    return lhs >= rhs;
+    // Cross-multiplication to compare ratios without division:
+    // Expected ratio: JPY / USD = oraclePrice / 10000
+    // Lower bound (99%): JPY * 10000 * 100 >= USD * oraclePrice * 99
+    // Upper bound (101%): JPY * 10000 * 100 <= USD * oraclePrice * 101
+    // Simplified:
+    //   Lower: JPY * 1000000 >= USD * oraclePrice * 99
+    //   Upper: JPY * 1000000 <= USD * oraclePrice * 101
+    
+    // Cast to smaller types to prevent overflow
+    const usd40 = newReserveUSD as Uint<40>;
+    const jpy40 = newReserveJPY as Uint<40>;
+    const oracle40 = oraclePrice as Uint<40>;
+    
+    // Calculate left side: JPY * 1000000
+    const million = 1000000 as Uint<40>;
+    const lhs = jpy40 * million as Uint<80>;
+    
+    // Calculate lower bound right side: USD * oraclePrice * 99
+    const ninetyNine = 99 as Uint<40>;
+    const usdOracle = usd40 * oracle40 as Uint<80>;
+    const rhsLower = usdOracle * ninetyNine as Uint<120>;
+    
+    // Calculate upper bound right side: USD * oraclePrice * 101
+    const oneOhOne = 101 as Uint<40>;
+    const rhsUpper = usdOracle * oneOhOne as Uint<120>;
+    
+    // Check both bounds using only comparison
+    const aboveLower = lhs as Uint<128> >= rhsLower;
+    const belowUpper = lhs as Uint<128> <= rhsUpper;
+    
+    return aboveLower && belowUpper;
 }
 
-// JPY to USD: verify swap rate >= inverse oracle rate
-// Simplified: xOut * oracleJpyPrice >= SCALE * yIn
-export circuit verifyJPYToUSDOracle(
-    xOut: Uint<64>,
-    yIn: Uint<64>
-): Boolean {
-    const xOut128 = disclose(xOut) as Uint<64>;
-    const yIn128 = disclose(yIn) as Uint<64>;
-    const SCALE = 10000 as Uint<64>;
-    
-    const lhs = xOut128 * (oracleJpyPrice as Uint<64>);
-    const rhs = SCALE * yIn128;
-    return lhs >= rhs;
+// Get token colors for shielded operations
+circuit getUSDTokenColor(): Bytes<32> {
+    return tokenType(getTokenUSDName(), kernel.self());
 }
 
-// ============================================================================
-// K INVARIANT VERIFICATION
-// ============================================================================
+circuit getJPYTokenColor(): Bytes<32> {
+    return tokenType(getTokenJPYName(), kernel.self());
+}
 
-// Verify K invariant doesn't decrease after swap
-pure circuit verifyKInvariant(
-    xIn: Uint<64>,
-    yOut: Uint<64>,
-    currentX: Uint<128>,
-    currentY: Uint<128>
-): Boolean {
-    const initialK = calcK(currentX, currentY);
-    const newX = currentX + disclose(xIn) as Uint<128>;
-    const newY = currentY - disclose(yOut) as Uint<128>;
-    const finalK = calcK(newX, newY);
-    return finalK >= initialK;
+circuit getLPTokenColor(): Bytes<32> {
+    return tokenType(getLPTokenName(), kernel.self());
+}
+
+// Get contract address for shielded transfers
+circuit getShieldedContractAddress(): Either<ZswapCoinPublicKey, ContractAddress> {
+    return Either<ZswapCoinPublicKey, ContractAddress> {
+        false,
+        ZswapCoinPublicKey{bytes: pad(32, "")},
+        kernel.self()
+    };
 }
 
 // ============================================================================
 // TOKEN MINTING (Mock Faucet)
 // ============================================================================
-// These functions mint shielded tokens to users.
-// In production, tokens would be minted through a more controlled process
-// (e.g., a bridge from another chain or a governance-approved minting mechanism).
-// 
-// For testing and development, we use these simple mint functions as a faucet.
 
 export circuit mintUSD(
     amount:    Uint<64>,
     recipient: Either<ZswapCoinPublicKey, ContractAddress>,
     nonce:     Bytes<32>
 ): [] {
-    // Validate amount is positive (prevent minting zero or negative tokens)
     assert(amount > 0, "Amount must be positive");
-    
-    // Mint shielded USD tokens to the recipient
-    // Shielded tokens are private - only the recipient can see their balance
-    mintShieldedToken(disclose(getTokenUSDName()), disclose(amount), disclose(nonce), disclose(recipient));
+    mintShieldedToken(
+        disclose(getTokenUSDName()),
+        disclose(amount),
+        disclose(nonce),
+        disclose(recipient)
+    );
 }
 
 export circuit mintJPY(
@@ -211,74 +163,71 @@ export circuit mintJPY(
     recipient: Either<ZswapCoinPublicKey, ContractAddress>,
     nonce:     Bytes<32>
 ): [] {
-    // Validate amount is positive
     assert(amount > 0, "Amount must be positive");
-    
-    // Mint shielded JPY tokens to the recipient
-    mintShieldedToken(disclose(getTokenJPYName()), disclose(amount), disclose(nonce), disclose(recipient));
+    mintShieldedToken(
+        disclose(getTokenJPYName()),
+        disclose(amount),
+        disclose(nonce),
+        disclose(recipient)
+    );
 }
-
 
 // ============================================================================
 // POOL MANAGEMENT
 // ============================================================================
 
 export circuit initPool(
-    xIn:      Uint<64>,
-    yIn:      Uint<64>,
+    usdIn:    Uint<64>,
+    jpyIn:    Uint<64>,
     lpOut:    Uint<64>,
     recipient: Either<ZswapCoinPublicKey, ContractAddress>,
     nonce:    Bytes<32>
 ): [] {
-    // Verify caller is owner (only owner can initialize the pool)
-    const caller = getDappPubKey(localSk());
-    assert(caller == owner, "Unauthorized: only owner can initialize pool");
-    
-    // Check if pool is already initialized (prevent re-initialization)
+    // Check if pool is already initialized
     assert(!poolInitialized, "Pool already initialized");
     
-    // Validate LP tokens: lpOut^2 <= xIn * yIn
-    // This ensures the LP tokens are proportional to the sqrt(x*y)
-    // Prevents the owner from minting too many LP tokens for themselves
+    // Validate LP tokens: lpOut^2 <= usdIn * jpyIn
     const lpOut128 = disclose(lpOut) as Uint<128>;
-    const xIn128 = disclose(xIn) as Uint<128>;
-    const yIn128 = disclose(yIn) as Uint<128>;
+    const usdIn128 = disclose(usdIn) as Uint<128>;
+    const jpyIn128 = disclose(jpyIn) as Uint<128>;
     const lpOutSquared = (lpOut128 as Uint<64>) * (lpOut128 as Uint<64>);
-    const xInY = (xIn128 as Uint<64>) * (yIn128 as Uint<64>);
-    assert(lpOutSquared <= xInY, "Too many LP tokens taken");
+    const usdInJpy = (usdIn128 as Uint<64>) * (jpyIn128 as Uint<64>);
+    assert(lpOutSquared <= usdInJpy, "Too many LP tokens taken");
     
-    // Receive tokens from sender (burn them into the pool)
+    // Receive tokens from sender
     receiveShielded(ShieldedCoinInfo{
         disclose(nonce),
-        getTokenUSDName(),
-        disclose(xIn)
+        getUSDTokenColor(),
+        disclose(usdIn)
     });
     receiveShielded(ShieldedCoinInfo{
         disclose(nonce),
-        getTokenJPYName(),
-        disclose(yIn)
+        getJPYTokenColor(),
+        disclose(jpyIn)
     });
     
-    // Update pool state (commit to new reserves)
-    // The reserves come from witnesses - they're private but verified
-    const reserveUSD = localReserveUSD();
-    const reserveJPY = localReserveJPY();
-    hashedReserveUSD = disclose(commitAmount(reserveUSD as Uint<64>));
-    hashedReserveJPY = disclose(commitAmount(reserveJPY as Uint<64>));
+    // Update pool reserves
+    reserveUSD = disclose(usdIn128);
+    reserveJPY = disclose(jpyIn128);
     
-    // Update LP token supply (public - needed for future LP calculations)
+    // Update LP token supply
     lpTotalSupply = disclose(lpOut128);
     
-    // Mint LP tokens to recipient (represents ownership share)
-    mintShieldedToken(disclose(getLPTokenName()), disclose(lpOut), disclose(nonce), disclose(recipient));
+    // Mint LP tokens to recipient
+    mintShieldedToken(
+        disclose(getLPTokenName()),
+        disclose(lpOut),
+        disclose(nonce),
+        disclose(recipient)
+    );
     
-    // Mark pool as initialized (enables swaps and liquidity operations)
+    // Mark pool as initialized
     poolInitialized = disclose(true);
 }
 
 export circuit addLiquidity(
-    xIn:      Uint<64>,
-    yIn:      Uint<64>,
+    usdIn:    Uint<64>,
+    jpyIn:    Uint<64>,
     lpOut:    Uint<64>,
     recipient: Either<ZswapCoinPublicKey, ContractAddress>,
     nonce:     Bytes<32>
@@ -286,266 +235,296 @@ export circuit addLiquidity(
     // Verify pool is initialized
     assert(poolInitialized, "Pool not initialized");
     
-    // Get current reserves from witnesses (private pool state)
-    const currentX = localReserveUSD();
-    const currentY = localReserveJPY();
+    const currentUSD = reserveUSD;
+    const currentJPY = reserveJPY;
     const totalLP = lpTotalSupply;
     
-    // Validate LP tokens using multiplication (avoiding division in circuits)
-    // The LP token share should be: lpOut / totalLP = xIn / currentX = yIn / currentY
-    // We check: lpOut * currentX <= xIn * totalLP and lpOut * currentY <= yIn * totalLP
-    // This ensures LP tokens are proportional to the liquidity added
-    const xIn128 = disclose(xIn);
-    const yIn128 = disclose(yIn);
+    // Validate LP tokens using multiplication (avoiding division)
+    // Check: lpOut * currentUSD <= usdIn * totalLP OR lpOut * currentJPY <= jpyIn * totalLP
+    const usdIn128 = disclose(usdIn);
+    const jpyIn128 = disclose(jpyIn);
     
-    if (xIn128 * currentY < yIn128 * currentX) {
+    if (usdIn128 * currentJPY < jpyIn128 * currentUSD) {
         // USD is the limiting factor
-        const xLhs = disclose(lpOut) * currentX;
-        const xRhs = xIn128 * totalLP;
-        assert(xLhs <= xRhs, "Too many LP tokens taken (bound by USD)");
+        const usdLhs = disclose(lpOut) * currentUSD;
+        const usdRhs = usdIn128 * totalLP;
+        assert(usdLhs <= usdRhs, "Too many LP tokens taken (bound by USD)");
     } else {
         // JPY is the limiting factor
-        const yLhs = disclose(lpOut) * currentY;
-        const yRhs = yIn128 * totalLP;
-        assert(yLhs <= yRhs, "Too many LP tokens taken (bound by JPY)");
+        const jpyLhs = disclose(lpOut) * currentJPY;
+        const jpyRhs = jpyIn128 * totalLP;
+        assert(jpyLhs <= jpyRhs, "Too many LP tokens taken (bound by JPY)");
     }
     
-    // Receive tokens from sender (add them to pool reserves)
+    // Receive tokens from sender
     receiveShielded(ShieldedCoinInfo{
         disclose(nonce),
-        getTokenUSDName(),
-        disclose(xIn)
+        getUSDTokenColor(),
+        disclose(usdIn)
     });
     receiveShielded(ShieldedCoinInfo{
         disclose(nonce),
-        getTokenJPYName(),
-        disclose(yIn)
+        getJPYTokenColor(),
+        disclose(jpyIn)
     });
     
-    // Update pool state (commit to new reserves via witnesses)
-    const newReserveUSD = localReserveUSD();
-    const newReserveJPY = localReserveJPY();
-    hashedReserveUSD = disclose(commitAmount(newReserveUSD as Uint<64>));
-    hashedReserveJPY = disclose(commitAmount(newReserveJPY as Uint<64>));
+    // Update pool reserves
+    reserveUSD = reserveUSD + usdIn128 as Uint<128>;
+    reserveJPY = reserveJPY + jpyIn128 as Uint<128>;
     
-    // Update LP token supply (public - needed for future LP calculations)
+    // Update LP token supply
     lpTotalSupply = totalLP + disclose(lpOut) as Uint<128>;
     
-    // Mint LP tokens to recipient (represents ownership share)
-    mintShieldedToken(disclose(getLPTokenName()), disclose(lpOut), disclose(nonce), disclose(recipient));
+    // Mint LP tokens to recipient
+    mintShieldedToken(
+        disclose(getLPTokenName()),
+        disclose(lpOut),
+        disclose(nonce),
+        disclose(recipient)
+    );
 }
 
 export circuit removeLiquidity(
     lpIn:     Uint<64>,
-    xOut:     Uint<64>,
-    yOut:     Uint<64>,
+    usdOut:   Uint<64>,
+    jpyOut:   Uint<64>,
     recipient: Either<ZswapCoinPublicKey, ContractAddress>,
     nonce:     Bytes<32>
 ): [] {
     // Verify pool is initialized
     assert(poolInitialized, "Pool not initialized");
     
-    // Get current reserves from witnesses (private pool state)
-    const currentX = localReserveUSD();
-    const currentY = localReserveJPY();
+    const currentUSD = reserveUSD;
+    const currentJPY = reserveJPY;
     const totalLP = lpTotalSupply;
     
     // Validate output tokens using multiplication
-    // The LP token share should be: lpIn / totalLP = xOut / currentX = yOut / currentY
-    // We check: xOut * totalLP <= lpIn * currentX and yOut * totalLP <= lpIn * currentY
-    // This ensures output is proportional to the LP tokens burned
-    const xOut128 = disclose(xOut);
-    const yOut128 = disclose(yOut);
+    // Check: usdOut * totalLP <= lpIn * currentUSD AND jpyOut * totalLP <= lpIn * currentJPY
+    const usdOut128 = disclose(usdOut);
+    const jpyOut128 = disclose(jpyOut);
     const lpIn128 = disclose(lpIn);
     
-    const xLhs = xOut128 * totalLP;
-    const xRhs = lpIn128 * currentX;
-    assert(xLhs <= xRhs, "Too much USD requested");
+    const usdLhs = usdOut128 * totalLP;
+    const usdRhs = lpIn128 * currentUSD;
+    assert(usdLhs <= usdRhs, "Too much USD requested");
     
-    const yLhs = yOut128 * totalLP;
-    const yRhs = lpIn128 * currentY;
-    assert(yLhs <= yRhs, "Too much JPY requested");
+    const jpyLhs = jpyOut128 * totalLP;
+    const jpyRhs = lpIn128 * currentJPY;
+    assert(jpyLhs <= jpyRhs, "Too much JPY requested");
     
-    // Burn LP tokens from sender (remove from pool)
+    // Burn LP tokens from sender
     receiveShielded(ShieldedCoinInfo{
         disclose(nonce),
-        getLPTokenName(),
+        getLPTokenColor(),
         disclose(lpIn)
     });
     
-    // Update LP token supply (public)
+    // Update LP token supply
     lpTotalSupply = totalLP - lpIn128;
     
-    // Update pool state (commit to new reserves via witnesses)
-    const newReserveUSD = localReserveUSD();
-    const newReserveJPY = localReserveJPY();
-    hashedReserveUSD = disclose(commitAmount(newReserveUSD as Uint<64>));
-    hashedReserveJPY = disclose(commitAmount(newReserveJPY as Uint<64>));
+    // Update pool reserves (public)
+    reserveUSD = reserveUSD - usdOut128;
+    reserveJPY = reserveJPY - jpyOut128;
     
-    // Send tokens to recipient (withdraw from pool)
+    // Send tokens to recipient
     sendImmediateShielded(
         ShieldedCoinInfo{
             disclose(nonce),
-            getTokenUSDName(),
-            disclose(xOut)
+            getUSDTokenColor(),
+            disclose(usdOut)
         },
         disclose(recipient),
-        disclose(xOut)
+        disclose(usdOut)
     );
     
     sendImmediateShielded(
         ShieldedCoinInfo{
             disclose(nonce),
-            getTokenJPYName(),
-            disclose(yOut)
+            getJPYTokenColor(),
+            disclose(jpyOut)
         },
         disclose(recipient),
-        disclose(yOut)
+        disclose(jpyOut)
     );
 }
 
-
 // ============================================================================
-// SWAP IMPLEMENTATION
+// SWAP IMPLEMENTATION WITH DYNAMIC FEES
 // ============================================================================
-// Swaps are the core function of the DEX, allowing users to exchange tokens.
-// 
-// KEY PRIVACY FEATURES:
-// 1. Pool reserves are private (witness-based)
-// 2. Swap amounts are private (circuit inputs)
-// 3. Swap rates are private (only constraints are verified)
-// 
-// KEY VERIFICATIONS:
-// 1. K Invariant: Ensures pool liquidity isn't drained
-// 2. Oracle Constraint: Ensures swap rate is >= oracle reference rate
-// 
-// This combination provides:
-// - Privacy: No one can see how much is being swapped
-// - Fairness: Proofs verify swaps are at fair rates
-// - Security: K invariant prevents liquidity drain
 
 export circuit swapUSDToJPY(
-    xIn:      Uint<64>,
-    yOut:     Uint<64>,
+    usdIn:    Uint<64>,
+    jpyOut:   Uint<64>,
+    usdFee:   Uint<64>,
     recipient: Either<ZswapCoinPublicKey, ContractAddress>,
     nonce:    Bytes<32>
 ): [] {
     // Verify pool is initialized
     assert(poolInitialized, "Pool not initialized");
     
-    // Get current reserves from witnesses (private pool state)
-    const currentX = localReserveUSD();
-    const currentY = localReserveJPY();
+    // Calculate post-trade reserves
+    const usdIn128 = disclose(usdIn) as Uint<128>;
+    const jpyOut128 = disclose(jpyOut) as Uint<128>;
+    const newReserveUSD = reserveUSD + usdIn128;
+    const newReserveJPY = reserveJPY - jpyOut128;
+    
+    // Check if post-trade pool is balanced (within 1% of oracle)
+    const isBalanced = isPostTradeBalanced(
+        newReserveUSD as Uint<128>,
+        newReserveJPY as Uint<128>,
+        oracleJpyPrice
+    );
+    
+    // Determine fee tier: 50 bps (0.5%) if balanced, 100 bps (1%) if imbalanced
+    const feeTier = isBalanced ? 50 : 100;
+    const feeTier64 = feeTier as Uint<64>;
+    
+    // Verify fee is sufficient: fee * 10000 >= usdIn * feeTier
+    assert(usdFee * 10000 >= usdIn * feeTier64, "Fee too low");
     
     // Verify K invariant (constant product maintained)
-    // This ensures: (x + xIn) * (y - yOut) >= x * y
-    // If K decreases, it means liquidity was drained from the pool
-    const kValid = verifyKInvariant(xIn, yOut, currentX, currentY);
-    assert(kValid, "K invariant violated");
+    const initialK = calcK(reserveUSD, reserveJPY);
+    const finalK = calcK(newReserveUSD as Uint<128>, newReserveJPY as Uint<128>);
+    assert(finalK >= initialK, "K invariant violated");
     
-    // Verify oracle rate constraint (swap rate >= oracle rate)
-    // This ensures: yOut / xIn >= oracleJpyPrice / SCALE
-    // Users get at least the oracle rate (or better)
-    const oracleValid = verifyUSDToJPYOracle(yOut, xIn);
-    assert(oracleValid, "Swap rate worse than oracle");
+    // Collect fee and update reserves
+    usdFees = usdFees + disclose(usdFee) as Uint<128>;
+    reserveUSD = (reserveUSD + (usdIn128 - disclose(usdFee) as Uint<128>)) as Uint<128>;
+    reserveJPY = reserveJPY - jpyOut128;
     
-    // Receive USD tokens from sender (add to pool reserves)
+    // Receive USD tokens from sender
     receiveShielded(ShieldedCoinInfo{
         disclose(nonce),
-        getTokenUSDName(),
-        disclose(xIn)
+        getUSDTokenColor(),
+        disclose(usdIn)
     });
     
-    // Update pool state (commit to new reserves via witnesses)
-    const newReserveUSD = localReserveUSD();
-    const newReserveJPY = localReserveJPY();
-    hashedReserveUSD = disclose(commitAmount(newReserveUSD as Uint<64>));
-    hashedReserveJPY = disclose(commitAmount(newReserveJPY as Uint<64>));
-    
-    // Send JPY tokens to recipient (withdraw from pool)
+    // Send JPY tokens to recipient
     sendImmediateShielded(
         ShieldedCoinInfo{
             disclose(nonce),
-            getTokenJPYName(),
-            disclose(yOut)
+            getJPYTokenColor(),
+            disclose(jpyOut)
         },
         disclose(recipient),
-        disclose(yOut)
+        disclose(jpyOut)
     );
 }
 
 export circuit swapJPYToUSD(
-    yIn:      Uint<64>,
-    xOut:     Uint<64>,
+    jpyIn:    Uint<64>,
+    usdOut:   Uint<64>,
+    jpyFee:   Uint<64>,
     recipient: Either<ZswapCoinPublicKey, ContractAddress>,
-    nonce:     Bytes<32>
+    nonce:    Bytes<32>
 ): [] {
     // Verify pool is initialized
     assert(poolInitialized, "Pool not initialized");
     
-    // Get current reserves from witnesses (private pool state)
-    const currentX = localReserveUSD();
-    const currentY = localReserveJPY();
+    // Calculate post-trade reserves
+    const jpyIn128 = disclose(jpyIn) as Uint<128>;
+    const usdOut128 = disclose(usdOut) as Uint<128>;
+    const newReserveUSD = reserveUSD - usdOut128;
+    const newReserveJPY = reserveJPY + jpyIn128;
+    
+    // Check if post-trade pool is balanced (within 1% of oracle)
+    const isBalanced = isPostTradeBalanced(
+        newReserveUSD as Uint<128>,
+        newReserveJPY as Uint<128>,
+        oracleJpyPrice
+    );
+    
+    // Determine fee tier: 50 bps (0.5%) if balanced, 100 bps (1%) if imbalanced
+    const feeTier = isBalanced ? 50 : 100;
+    const feeTier64 = feeTier as Uint<64>;
+    
+    // Verify fee is sufficient: fee * 10000 >= jpyIn * feeTier
+    assert(jpyFee * 10000 >= jpyIn * feeTier64, "Fee too low");
     
     // Verify K invariant (constant product maintained)
-    // For JPY->USD: we remove USD from X and add JPY to Y
-    // verifyKInvariant handles this by checking the final K >= initial K
-    const kValid = verifyKInvariant(xOut, yIn, currentX, currentY);
-    assert(kValid, "K invariant violated");
+    const initialK = calcK(reserveUSD, reserveJPY);
+    const finalK = calcK(newReserveUSD as Uint<128>, newReserveJPY as Uint<128>);
+    assert(finalK >= initialK, "K invariant violated");
     
-    // Verify oracle rate constraint (swap rate >= inverse oracle rate)
-    // This ensures: xOut / yIn >= SCALE / oracleJpyPrice
-    // Users get at least the oracle rate (or better)
-    const oracleValid = verifyJPYToUSDOracle(xOut, yIn);
-    assert(oracleValid, "Swap rate worse than oracle");
+    // Collect fee and update reserves
+    jpyFees = jpyFees + disclose(jpyFee) as Uint<128>;
+    reserveUSD = reserveUSD - usdOut128;
+    reserveJPY = (reserveJPY + (jpyIn128 - disclose(jpyFee) as Uint<128>)) as Uint<128>;
     
-    // Receive JPY tokens from sender (add to pool reserves)
+    // Receive JPY tokens from sender
     receiveShielded(ShieldedCoinInfo{
         disclose(nonce),
-        getTokenJPYName(),
-        disclose(yIn)
+        getJPYTokenColor(),
+        disclose(jpyIn)
     });
     
-    // Update pool state (commit to new reserves via witnesses)
-    const newReserveUSD = localReserveUSD();
-    const newReserveJPY = localReserveJPY();
-    hashedReserveUSD = disclose(commitAmount(newReserveUSD as Uint<64>));
-    hashedReserveJPY = disclose(commitAmount(newReserveJPY as Uint<64>));
-    
-    // Send USD tokens to recipient (withdraw from pool)
+    // Send USD tokens to recipient
     sendImmediateShielded(
         ShieldedCoinInfo{
             disclose(nonce),
-            getTokenUSDName(),
-            disclose(xOut)
+            getUSDTokenColor(),
+            disclose(usdOut)
         },
         disclose(recipient),
-        disclose(xOut)
+        disclose(usdOut)
     );
 }
 
 // ============================================================================
-// ORACLE & ADMIN FUNCTIONS
+// REBALANCE FUNCTION
 // ============================================================================
-// Oracle prices are public reference rates that swaps must beat or match.
-// This ensures users get fair market rates without revealing actual swap amounts.
-// 
-// SECURITY CONSIDERATIONS:
-// 1. Only the owner can update oracle prices
-// 2. Prices must be positive (prevent zero or negative prices)
-// 3. Prices are public (needed for swap verification circuits)
-// 
-// In production, oracle prices should be updated from a trusted oracle
-// (e.g., Chainlink, Band Protocol, or a decentralized oracle network)
+
+export circuit rebalance(): [] {
+
+    // Verify pool is initialized
+    assert(poolInitialized, "Pool not initialized");
+    
+    // Get current reserves 
+    const currentUSD = (reserveUSD as Uint<64>) as Uint<128>;
+    const currentJPY = (reserveJPY as Uint<64>) as Uint<128>;
+    
+    // Check if pool is imbalanced (outside 1% threshold)
+    const isBalanced = isPostTradeBalanced(
+        currentUSD,
+        currentJPY,
+        oracleJpyPrice
+    );
+    
+    // Only allow rebalancing if pool is imbalanced
+    assert(!isBalanced, "Pool is already balanced");
+    
+    // Determine which side is underweight using only multiplication
+    // Expected JPY at oracle: reserveUSD * oraclePrice / 10000
+    // If actual < expected: actual * 10000 < usd * oracle (JPY underweight)
+    // If actual > expected: actual * 10000 > usd * oracle (USD underweight)
+    
+    const usd128 = currentUSD as Uint<64>;
+    const jpy128 = currentJPY as Uint<64>;
+    const oracle128 = oracleJpyPrice as Uint<128>;
+    
+    // Check: actual * 10000 < usd * oracle → JPY is underweight
+    const lhs = jpy128 * 10000 as Uint<128>;
+    const rhs = (usd128 * oracle128) as Uint<128>;
+    
+    if (lhs < rhs) {
+        // JPY is underweight - add JPY fees to reserve
+        reserveJPY = (reserveJPY + jpyFees) as Uint<128>;
+        jpyFees = 0;
+    } else {
+        // USD is underweight - add USD fees to reserve
+        reserveUSD = (reserveUSD + usdFees) as Uint<128>;
+        usdFees = 0;
+    }
+}
+
+// ============================================================================
+// ORACLE FUNCTIONS
+// ============================================================================
 
 export circuit updateOraclePrice(
     usd_jpy_price: Uint<64>
 ): [] {
-    // Verify caller is owner (only owner can update oracle prices)
-    const caller = getDappPubKey(localSk());
-    assert(caller == owner, "Unauthorized: only owner can update price");
-    
-    // Validate price is positive (prevent zero or negative prices)
+    // Validate price is positive
     assert(usd_jpy_price > 0, "Price must be positive");
     
     // Update oracle price (public - used in swap verification)
@@ -553,8 +532,6 @@ export circuit updateOraclePrice(
 }
 
 // Get the current oracle price for USD/JPY
-// Returns the price scaled by SCALE=10000 for precision
-// Example: 150000 means 1 USD = 150.00 JPY
 export circuit getOraclePrice(): Uint<64> {
     return oracleJpyPrice;
 }
