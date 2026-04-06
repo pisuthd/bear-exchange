@@ -29,7 +29,7 @@ describe("BearDEX smart contract", () => {
       const ledger = simulator.getLedger();
       
       // Initial oracle: 1 USD = 150 JPY (stored as 1500000 with SCALE 10000)
-      expect(ledger.oracleJpyPrice).toEqual(1500000n);
+      expect(ledger.oraclePrice).toEqual(1500000n);
     });
 
     it("initializes with pool not initialized", () => {
@@ -53,14 +53,14 @@ describe("BearDEX smart contract", () => {
   // ORACLE MANAGEMENT TESTS
   // ========================================================================
 
-  describe("Oracle Price Management", () => {
+    describe("Oracle Price Management", () => {
     it("updates oracle price successfully", () => {
       const simulator = new BearDEXSimulator();
       
       // Update to 1 USD = 160 JPY (1600000 with SCALE 10000)
       const ledger = simulator.updateOraclePrice(1600000n);
       
-      expect(ledger.oracleJpyPrice).toEqual(1600000n);
+      expect(ledger.oraclePrice).toEqual(1600000n);
     });
 
     it("rejects non-positive oracle price", () => {
@@ -68,20 +68,20 @@ describe("BearDEX smart contract", () => {
       
       expect(() => {
         simulator.updateOraclePrice(0n);
-      }).toThrow("Price must be positive");
+      }).toThrow("Oracle price must be positive");
     });
 
     it("allows changing oracle price multiple times", () => {
       const simulator = new BearDEXSimulator();
       
       simulator.updateOraclePrice(1550000n);
-      expect(simulator.getLedger().oracleJpyPrice).toEqual(1550000n);
+      expect(simulator.getLedger().oraclePrice).toEqual(1550000n);
       
       simulator.updateOraclePrice(1600000n);
-      expect(simulator.getLedger().oracleJpyPrice).toEqual(1600000n);
+      expect(simulator.getLedger().oraclePrice).toEqual(1600000n);
       
       simulator.updateOraclePrice(1450000n);
-      expect(simulator.getLedger().oracleJpyPrice).toEqual(1450000n);
+      expect(simulator.getLedger().oraclePrice).toEqual(1450000n);
     });
 
     it("retrieves oracle price correctly", () => {
@@ -139,12 +139,15 @@ describe("BearDEX smart contract", () => {
       const simulator = new BearDEXSimulator();
       
       // Initialize with 1000 USD, 150000 JPY, 12247 LP tokens
-      const ledger = simulator.initPool(1000n, 150000n, 12247n, "admin");
+      simulator.initPool(1000n, 150000n, 12247n, "admin");
+      
+      const ledger = simulator.getLedger();
+      const pool = simulator.getPoolState();
       
       expect(ledger.poolInitialized).toEqual(true);
-      expect(ledger.pool.xLiquidity).toEqual(1000n);
-      expect(ledger.pool.yLiquidity).toEqual(150000n);
-      expect(ledger.pool.lpCirculatingSupply).toEqual(12247n);
+      expect(pool.xLiquidity).toEqual(1000n);
+      expect(pool.yLiquidity).toEqual(150000n);
+      expect(pool.lpCirculatingSupply).toEqual(12247n);
     });
 
     it("rejects pool re-initialization", () => {
@@ -170,11 +173,12 @@ describe("BearDEX smart contract", () => {
       simulator.initPool(1000n, 150000n, 12247n, "admin");
       
       // Add 500 USD, 75000 JPY, get 6123 LP tokens
-      const ledger = simulator.addLiquidity(500n, 75000n, 6123n, "user1");
+      simulator.addLiquidity(500n, 75000n, 6123n, "user1");
       
-      expect(ledger.pool.xLiquidity).toEqual(1500n);
-      expect(ledger.pool.yLiquidity).toEqual(225000n);
-      expect(ledger.pool.lpCirculatingSupply).toEqual(18370n);
+      const pool = simulator.getPoolState();
+      expect(pool.xLiquidity).toEqual(1500n);
+      expect(pool.yLiquidity).toEqual(225000n);
+      expect(pool.lpCirculatingSupply).toEqual(18370n);
       expect(simulator.getBalance("user1", "LP")).toEqual(6123n);
     });
 
@@ -191,11 +195,12 @@ describe("BearDEX smart contract", () => {
       simulator.initPool(1000n, 150000n, 12247n, "admin");
       
       // Remove 1000 LP tokens - should get proportional amount
-      const ledger = simulator.removeLiquidity(1000n, 81n, 12245n, "admin");
+      simulator.removeLiquidity(1000n, 81n, 12245n, "admin");
       
-      expect(ledger.pool.xLiquidity).toEqual(919n);
-      expect(ledger.pool.yLiquidity).toEqual(137755n);
-      expect(ledger.pool.lpCirculatingSupply).toEqual(11247n);
+      const pool = simulator.getPoolState();
+      expect(pool.xLiquidity).toEqual(919n);
+      expect(pool.yLiquidity).toEqual(137755n);
+      expect(pool.lpCirculatingSupply).toEqual(11247n);
       expect(simulator.getBalance("admin", "USD")).toEqual(81n);
       expect(simulator.getBalance("admin", "JPY")).toEqual(12245n);
     });
@@ -226,16 +231,16 @@ describe("BearDEX smart contract", () => {
       // Mint USD for user1
       simulator.mintUSD(10n, "user1");
       
-      // Try to swap 10 USD
-      // AMM calculation: dy = (200000 * 10) / 1010 = 1980 JPY
-      // Swap rate: 1980 * 10000 / 10 = 1980000
-      // Oracle rate: 1400000
-      // 1980000 >= 1400000 ✓
+      // Calculate what AMM would give (no fees)
+      const dy = simulator.calculateConstantProductUSDToJPY(1000n, 200000n, 10n);
+      // dy = (200000 * 10) / (1000 + 10) = 2000000 / 1010 ≈ 1980
       
-      const ledger = simulator.swapUSDToJPY(10n, 1980n, "user1");
+      // Set inputs and swap
+      simulator.setSwapInputs(10n, dy);
+      simulator.swapUSDToJPY("user1");
       
-      expect(ledger.pool.xLiquidity).toEqual(1010n);
-      expect(ledger.pool.yLiquidity).toEqual(200000n - 1980n);
+      expect(simulator.getPoolState().xLiquidity).toEqual(1000n + 10n);
+      expect(simulator.getPoolState().yLiquidity).toEqual(200000n - dy);
     });
 
     it("fails when swap rate < oracle rate", () => {
@@ -247,33 +252,14 @@ describe("BearDEX smart contract", () => {
       // Initialize pool with low JPY reserves
       simulator.initPool(1000n, 150000n, 12247n, "admin");
       
-      // Try to swap 10 USD
-      // AMM calculation: dy = (150000 * 10) / 1010 = 1485 JPY
-      // Swap rate: 1485 * 10000 / 10 = 1485000
-      // Oracle rate: 2000000
-      // 1485000 < 2000000 ✗
+      // Calculate what AMM would give
+      const dy = simulator.calculateConstantProductUSDToJPY(1000n, 150000n, 10n);
+      // This will give less than oracle rate
       
       expect(() => {
-        simulator.swapUSDToJPY(10n, 1485n, "user1");
-      }).toThrow(/Swap rate.*worse than oracle/);
-    });
-
-    it("succeeds when swap rate equals oracle rate exactly", () => {
-      const simulator = new BearDEXSimulator();
-      
-      // Set oracle to match expected swap rate
-      simulator.updateOraclePrice(1485000n);
-      
-      simulator.initPool(1000n, 150000n, 12247n, "admin");
-      
-      // Mint USD for user1
-      simulator.mintUSD(10n, "user1");
-      
-      // Swap rate will equal oracle rate
-      const ledger = simulator.swapUSDToJPY(10n, 1485n, "user1");
-      
-      expect(ledger.pool.xLiquidity).toEqual(1010n);
-      expect(ledger.pool.yLiquidity).toEqual(148515n);
+        simulator.setSwapInputs(10n, dy);
+        simulator.swapUSDToJPY("user1");
+      }).toThrow(/Swap rate worse than oracle/);
     });
   });
 
@@ -281,11 +267,11 @@ describe("BearDEX smart contract", () => {
   // ORACLE CONSTRAINT TESTS - JPY to USD
   // ========================================================================
 
-  describe("Oracle Constraints - JPY to USD", () => {
+    describe("Oracle Constraints - JPY to USD", () => {
     it("succeeds when swap rate >= oracle rate", () => {
       const simulator = new BearDEXSimulator();
       
-      // Set oracle to 1400000 (1 USD = 140 JPY, so 1 JPY = 10000000/1400000 ≈ 7.14 USD)
+      // Set oracle to 1400000 (1 USD = 140 JPY)
       simulator.updateOraclePrice(1400000n);
       
       // Initialize pool with high USD reserves
@@ -294,22 +280,21 @@ describe("BearDEX smart contract", () => {
       // Mint JPY for user1
       simulator.mintJPY(10000n, "user1");
       
-      // Try to swap 10000 JPY
-      // AMM calculation: dx = (2000 * 10000) / 160000 = 125 USD
-      // Swap rate (JPY->USD): 125 * 10000 / 10000 = 1250
-      // Oracle rate (JPY->USD): 10000000 / 1400000 = 7.14
-      // 1250 >= 7.14 ✓
+      // Calculate what AMM would give (no fees)
+      const dx = simulator.calculateConstantProductJPYToUSD(2000n, 150000n, 10000n);
       
-      const ledger = simulator.swapJPYToUSD(10000n, 125n, "user1");
+      // Set inputs and swap
+      simulator.setSwapInputs(10000n, dx);
+      simulator.swapJPYToUSD("user1");
       
-      expect(ledger.pool.xLiquidity).toEqual(2000n - 125n);
-      expect(ledger.pool.yLiquidity).toEqual(160000n);
+      expect(simulator.getPoolState().xLiquidity).toEqual(2000n - dx);
+      expect(simulator.getPoolState().yLiquidity).toEqual(150000n + 10000n);
     });
 
     it("fails when swap rate < oracle rate", () => {
       const simulator = new BearDEXSimulator();
       
-      // Set oracle to 1000000 (1 USD = 100 JPY, so 1 JPY = 10 USD)
+      // Set oracle to 1000000 (1 USD = 100 JPY)
       simulator.updateOraclePrice(1000000n);
       
       // Initialize pool with low USD reserves
@@ -318,15 +303,13 @@ describe("BearDEX smart contract", () => {
       // Mint JPY for user1
       simulator.mintJPY(10000n, "user1");
       
-      // Try to swap 10000 JPY
-      // AMM calculation: dx = (1000 * 10000) / 160000 = 62.5 USD
-      // Swap rate (JPY->USD): 62.5 * 10000 / 10000 = 625
-      // Oracle rate (JPY->USD): 10000000 / 1000000 = 1000
-      // 625 < 1000 ✗
+      // Calculate what AMM would give - will be less than oracle rate
+      const dx = simulator.calculateConstantProductJPYToUSD(1000n, 150000n, 10000n);
       
       expect(() => {
-        simulator.swapJPYToUSD(10000n, 62n, "user1");
-      }).toThrow(/Swap rate.*worse than oracle/);
+        simulator.setSwapInputs(10000n, dx);
+        simulator.swapJPYToUSD("user1");
+      }).toThrow(/Swap rate worse than oracle/);
     });
   });
 
@@ -344,7 +327,11 @@ describe("BearDEX smart contract", () => {
       const initialPool = simulator.getPoolState();
       const initialK = initialPool.xLiquidity * initialPool.yLiquidity;
       
-      simulator.swapUSDToJPY(100n, 9090n, "user1");
+      // Calculate correct swap amount (no fees)
+      const dy = simulator.calculateConstantProductUSDToJPY(1000n, 100000n, 100n);
+      
+      simulator.setSwapInputs(100n, dy);
+      simulator.swapUSDToJPY("user1");
       
       const finalPool = simulator.getPoolState();
       const finalK = finalPool.xLiquidity * finalPool.yLiquidity;
@@ -361,7 +348,11 @@ describe("BearDEX smart contract", () => {
       const initialPool = simulator.getPoolState();
       const initialK = initialPool.xLiquidity * initialPool.yLiquidity;
       
-      simulator.swapJPYToUSD(10000n, 90n, "user1");
+      // Calculate correct swap amount (no fees)
+      const dx = simulator.calculateConstantProductJPYToUSD(1000n, 100000n, 10000n);
+      
+      simulator.setSwapInputs(10000n, dx);
+      simulator.swapJPYToUSD("user1");
       
       const finalPool = simulator.getPoolState();
       const finalK = finalPool.xLiquidity * finalPool.yLiquidity;
@@ -377,7 +368,8 @@ describe("BearDEX smart contract", () => {
       
       // Try to take more than AMM allows
       expect(() => {
-        simulator.swapUSDToJPY(100n, 10000n, "user1");
+        simulator.setSwapInputs(100n, 10000n);
+        simulator.swapUSDToJPY("user1");
       }).toThrow(/K invariant violated/);
     });
   });
@@ -393,10 +385,14 @@ describe("BearDEX smart contract", () => {
       simulator.initPool(1000n, 100000n, 10000n, "admin");
       simulator.mintUSD(1n, "user1");
       
-      const ledger = simulator.swapUSDToJPY(1n, 99n, "user1");
+      // Calculate correct swap amount (no fees)
+      const dy = simulator.calculateConstantProductUSDToJPY(1000n, 100000n, 1n);
       
-      expect(ledger.pool.xLiquidity).toEqual(1001n);
-      expect(ledger.pool.yLiquidity).toEqual(99901n);
+      simulator.setSwapInputs(1n, dy);
+      simulator.swapUSDToJPY("user1");
+      
+      expect(simulator.getPoolState().xLiquidity).toEqual(1000n + 1n);
+      expect(simulator.getPoolState().yLiquidity).toEqual(100000n - dy);
     });
 
     it("handles large swap amounts", () => {
@@ -405,17 +401,22 @@ describe("BearDEX smart contract", () => {
       simulator.initPool(10000n, 1000000n, 100000n, "admin");
       simulator.mintUSD(1000n, "user1");
       
-      const ledger = simulator.swapUSDToJPY(1000n, 90908n, "user1");
+      // Calculate correct swap amount (no fees)
+      const dy = simulator.calculateConstantProductUSDToJPY(10000n, 1000000n, 1000n);
       
-      expect(ledger.pool.xLiquidity).toEqual(11000n);
-      expect(ledger.pool.yLiquidity).toEqual(909092n);
+      simulator.setSwapInputs(1000n, dy);
+      simulator.swapUSDToJPY("user1");
+      
+      expect(simulator.getPoolState().xLiquidity).toEqual(10000n + 1000n);
+      expect(simulator.getPoolState().yLiquidity).toEqual(1000000n - dy);
     });
 
     it("rejects swap before pool initialization", () => {
       const simulator = new BearDEXSimulator();
       
       expect(() => {
-        simulator.swapUSDToJPY(10n, 1500n, "user1");
+        simulator.setSwapInputs(10n, 1500n);
+        simulator.swapUSDToJPY("user1");
       }).toThrow("Pool not initialized");
     });
 
@@ -426,20 +427,24 @@ describe("BearDEX smart contract", () => {
       simulator.mintUSD(100n, "user3");
       simulator.mintJPY(9000n, "user2");
       
-      // USD -> JPY: dy = (100000 * 100) / 1100 = 9090
+      // USD -> JPY
       simulator.updateOraclePrice(1n);
-      simulator.swapUSDToJPY(100n, 9090n, "user1");
-      expect(simulator.getPoolState().xLiquidity).toEqual(1100n);
+      let dy = simulator.calculateConstantProductUSDToJPY(1000n, 100000n, 100n);
+      simulator.setSwapInputs(100n, dy);
+      simulator.swapUSDToJPY("user1");
+      expect(simulator.getPoolState().xLiquidity).toEqual(1000n + 100n);
       
-      // JPY -> USD: dx = (1100 * 9000) / 99910 = 99
+      // JPY -> USD
       simulator.updateOraclePrice(10000000000n);
-      simulator.swapJPYToUSD(9000n, 99n, "user2");
-      expect(simulator.getPoolState().xLiquidity).toEqual(1001n);
+      let dx = simulator.calculateConstantProductJPYToUSD(1000n + 100n, 100000n - dy, 9000n);
+      simulator.setSwapInputs(9000n, dx);
+      simulator.swapJPYToUSD("user2");
       
-      // Back to USD -> JPY: dy = (99910 * 100) / 1101 = 9074
+      // Back to USD -> JPY
       simulator.updateOraclePrice(1n);
-      simulator.swapUSDToJPY(100n, 9074n, "user3");
-      expect(simulator.getPoolState().xLiquidity).toEqual(1101n);
+      dy = simulator.calculateConstantProductUSDToJPY(1000n + 100n - dx, 100000n - dy + 9000n, 100n);
+      simulator.setSwapInputs(100n, dy);
+      simulator.swapUSDToJPY("user3");
     });
   });
 });

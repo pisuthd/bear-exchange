@@ -1,36 +1,32 @@
-// This file is part of bear-exchange.
 // SPDX-License-Identifier: Apache-2.0
 
 /**
  * BearDEX Simulator
  * 
- * A simulator that mirrors the current BearDEX contract exactly.
- * 
  */
-
-import { generateNonce } from "../witnesses.js";
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
 interface PoolState {
-  xLiquidity: bigint;      // USD reserves (private - from witnesses)
-  yLiquidity: bigint;      // JPY reserves (private - from witnesses)
+  xLiquidity: bigint;      // USD reserves (PRIVATE - witness-based)
+  yLiquidity: bigint;      // JPY reserves (PRIVATE - witness-based)
   lpCirculatingSupply: bigint;  // LP token supply (public ledger)
 }
 
 interface LedgerState {
   // Public state
-  owner: Uint8Array;
+  oraclePrice: bigint;     // Oracle reference price (oracleJpyPrice)
+  hashedReserveUSD: Uint8Array;  // Hash commitment to USD reserves
+  hashedReserveJPY: Uint8Array;  // Hash commitment to JPY reserves
   lpTotalSupply: bigint;
-  hashedReserveUSD: Uint8Array;  // Hashed reserves (public)
-  hashedReserveJPY: Uint8Array; // Hashed reserves (public)
-  oracleJpyPrice: bigint;
   poolInitialized: boolean;
+}
 
-  // Private state (witness-based - sealed in contract)
-  pool: PoolState;
+interface SwapInputs {
+  dx: bigint;       // Public: amount in (USD or JPY)
+  dy: bigint;       // Public: amount out (JPY or USD) - user calculates off-chain
 }
 
 // ============================================================================
@@ -38,35 +34,33 @@ interface LedgerState {
 // ============================================================================
 
 /**
- * Simulates the BearDEX contract exactly as implemented.
+ * Simulates BearDEX contract with private pool reserves via witnesses.
+ * Uses Constant Product AMM with multiplication-only verification (NO DIVISION).
  */
 export class BearDEXSimulator {
   private ledger: LedgerState;
-  private userKeys: Map<string, Uint8Array>;
+  private privatePool: PoolState;  // Private pool state (witness-based)
   private userBalances: Map<string, Map<string, bigint>>;
-  private reservesUSD: bigint;  // Witness values
-  private reservesJPY: bigint;  // Witness values
+  private swapInputs: SwapInputs;
 
   constructor() {
     // Initialize with default values matching the contract constructor
     this.ledger = {
-      owner: this.generateRandomKey(),
+      oraclePrice: 1500000n,    // 1 USD = 150.00 JPY (scaled by SCALE=10000)
+      hashedReserveUSD: this.commitAmount(0n),
+      hashedReserveJPY: this.commitAmount(0n),
       lpTotalSupply: 0n,
-      hashedReserveUSD: this.hashAmount(0n),
-      hashedReserveJPY: this.hashAmount(0n),
-      oracleJpyPrice: 1500000n,  // Contract initializes to 1500000
       poolInitialized: false,
-      pool: {
-        xLiquidity: 0n,
-        yLiquidity: 0n,
-        lpCirculatingSupply: 0n,
-      },
     };
 
-    this.reservesUSD = 0n;
-    this.reservesJPY = 0n;
-    this.userKeys = new Map();
+    this.privatePool = {
+      xLiquidity: 0n,
+      yLiquidity: 0n,
+      lpCirculatingSupply: 0n,
+    };
+
     this.userBalances = new Map();
+    this.swapInputs = { dx: 0n, dy: 0n };
   }
 
   // ========================================================================
@@ -78,7 +72,23 @@ export class BearDEXSimulator {
   }
 
   getPoolState(): PoolState {
-    return { ...this.ledger.pool };
+    return {
+      xLiquidity: this.privatePool.xLiquidity,
+      yLiquidity: this.privatePool.yLiquidity,
+      lpCirculatingSupply: this.privatePool.lpCirculatingSupply,
+    };
+  }
+
+  // ========================================================================
+  // SWAP INPUTS (PUBLIC CIRCUIT PARAMETERS)
+  // ========================================================================
+
+  /**
+   * Set swap inputs (public circuit parameters)
+   * These values are disclosed on-chain as part of the circuit!
+   */
+  setSwapInputs(dx: bigint, dy: bigint): void {
+    this.swapInputs = { dx, dy };
   }
 
   // ========================================================================
@@ -110,19 +120,57 @@ export class BearDEXSimulator {
   }
 
   // ========================================================================
-  // ORACLE MANAGEMENT
+  // POOL PARAMETER MANAGEMENT
   // ========================================================================
 
-  updateOraclePrice(usd_jpy_price: bigint): LedgerState {
-    if (usd_jpy_price <= 0n) {
-      throw new Error("Price must be positive");
+  updateOraclePrice(newPrice: bigint): LedgerState {
+    if (newPrice <= 0n) {
+      throw new Error("Oracle price must be positive");
     }
-    this.ledger.oracleJpyPrice = usd_jpy_price;
+    this.ledger.oraclePrice = newPrice;
     return this.getLedger();
   }
 
   getOraclePrice(): bigint {
-    return this.ledger.oracleJpyPrice;
+    return this.ledger.oraclePrice;
+  }
+
+  // ========================================================================
+  // HASH COMMITMENTS
+  // ========================================================================
+
+  /**
+   * Commit to an amount without revealing it
+   * Simulates the contract's commitAmount function
+   */
+  private commitAmount(amount: bigint): Uint8Array {
+    const amountBytes = new Uint8Array(32);
+    const value = Number(amount);
+    for (let i = 0; i < 8; i++) {
+      amountBytes[i] = (value >> (i * 8)) & 0xff;
+    }
+    // Add salt
+    const salt = new Uint8Array(32);
+    for (let i = 0; i < 12; i++) {
+      salt[i] = "BearDEX:salt".charCodeAt(i % 13);
+    }
+    // Simple hash simulation
+    const combined = new Uint8Array(64);
+    combined.set(amountBytes, 0);
+    combined.set(salt, 32);
+    return combined.slice(0, 32);
+  }
+
+  // ========================================================================
+  // CONSTANT PRODUCT AMM - DIVISION-FREE VERIFICATION
+  // ============================================================================
+
+  /**
+   * Calculate K invariant for LP validation.
+   * K = x * y
+   */
+  private calcK(x: bigint, y: bigint): bigint {
+    return x * y;
   }
 
   // ========================================================================
@@ -135,47 +183,36 @@ export class BearDEXSimulator {
     lpOut: bigint,
     userId: string = "admin"
   ): LedgerState {
-    // Check if pool is already initialized (check this FIRST)
+    // Check if pool is already initialized
     if (this.ledger.poolInitialized) {
       throw new Error("Pool already initialized");
     }
 
-    // Verify caller is owner (simplified - assume admin userId)
-    const callerKey = this.userKeys.get(userId);
-    if (callerKey && !this.equalKeys(callerKey, this.ledger.owner)) {
-      throw new Error("Unauthorized: only owner can initialize pool");
-    }
-
-    // Validate LP tokens: lpOut^2 <= xIn * yIn
-    const lpOut128 = lpOut;
-    const xIn128 = xIn;
-    const yIn128 = yIn;
-    const lpOutSquared = (lpOut128 as bigint) * (lpOut128 as bigint);
-    const xInY = (xIn128 as bigint) * (yIn128 as bigint);
+    // Verify LP tokens: lpOut^2 <= xIn * yIn
+    const lpOutSquared = lpOut * lpOut;
+    const xInY = xIn * yIn;
     if (lpOutSquared > xInY) {
       throw new Error("Too many LP tokens taken");
     }
 
-    // Update witness reserves
-    this.reservesUSD = xIn;
-    this.reservesJPY = yIn;
+    // Update private pool reserves (witness-based)
+    this.privatePool.xLiquidity = xIn;
+    this.privatePool.yLiquidity = yIn;
+    this.privatePool.lpCirculatingSupply = lpOut;
 
-    // Update pool state
-    this.ledger.pool = {
-      xLiquidity: xIn,
-      yLiquidity: yIn,
-      lpCirculatingSupply: lpOut,
-    };
+    // Update hash commitments (public proof of reserves)
+    this.ledger.hashedReserveUSD = this.commitAmount(xIn);
+    this.ledger.hashedReserveJPY = this.commitAmount(yIn);
 
-    // Update public ledger
+    // Update LP token supply (public)
     this.ledger.lpTotalSupply = lpOut;
-    this.ledger.hashedReserveUSD = this.hashAmount(xIn);
-    this.ledger.hashedReserveJPY = this.hashAmount(yIn);
-    this.ledger.poolInitialized = true;
 
-    // Mint LP tokens to provider
+    // Mint LP tokens to provider (shielded)
     this.ensureUserExists(userId);
     this.addToBalance(userId, "LP", lpOut);
+
+    // Mark pool as initialized
+    this.ledger.poolInitialized = true;
 
     return this.getLedger();
   }
@@ -190,42 +227,38 @@ export class BearDEXSimulator {
       throw new Error("Pool not initialized");
     }
 
-    const pool = this.ledger.pool;
-    const xIn128 = xIn;
-    const yIn128 = yIn;
+    const pool = this.getPoolState();
 
     // Validate LP tokens using multiplication (avoiding division)
-    if (xIn128 * pool.yLiquidity < yIn128 * pool.xLiquidity) {
+    if (xIn * pool.yLiquidity < yIn * pool.xLiquidity) {
       const xLhs = lpOut * pool.xLiquidity;
-      const xRhs = xIn128 * pool.lpCirculatingSupply;
+      const xRhs = xIn * pool.lpCirculatingSupply;
       if (xLhs > xRhs) {
         throw new Error("Too many LP tokens taken (bound by USD)");
       }
     } else {
       const yLhs = lpOut * pool.yLiquidity;
-      const yRhs = yIn128 * pool.lpCirculatingSupply;
+      const yRhs = yIn * pool.lpCirculatingSupply;
       if (yLhs > yRhs) {
         throw new Error("Too many LP tokens taken (bound by JPY)");
       }
     }
 
-    // Update witness reserves
-    this.reservesUSD = pool.xLiquidity + xIn;
-    this.reservesJPY = pool.yLiquidity + yIn;
+    // Update private pool reserves (witness-based)
+    const newX = pool.xLiquidity + xIn;
+    const newY = pool.yLiquidity + yIn;
+    this.privatePool.xLiquidity = newX;
+    this.privatePool.yLiquidity = newY;
+    this.privatePool.lpCirculatingSupply = pool.lpCirculatingSupply + lpOut;
 
-    // Update pool state
-    this.ledger.pool = {
-      xLiquidity: pool.xLiquidity + xIn,
-      yLiquidity: pool.yLiquidity + yIn,
-      lpCirculatingSupply: pool.lpCirculatingSupply + lpOut,
-    };
+    // Update hash commitments (public proof of reserves)
+    this.ledger.hashedReserveUSD = this.commitAmount(newX);
+    this.ledger.hashedReserveJPY = this.commitAmount(newY);
 
-    // Update public ledger
-    this.ledger.lpTotalSupply = this.ledger.pool.lpCirculatingSupply;
-    this.ledger.hashedReserveUSD = this.hashAmount(this.reservesUSD);
-    this.ledger.hashedReserveJPY = this.hashAmount(this.reservesJPY);
+    // Update LP token supply (public)
+    this.ledger.lpTotalSupply = pool.lpCirculatingSupply + lpOut;
 
-    // Mint LP tokens to provider
+    // Mint LP tokens to provider (shielded)
     this.ensureUserExists(userId);
     this.addToBalance(userId, "LP", lpOut);
 
@@ -242,41 +275,40 @@ export class BearDEXSimulator {
       throw new Error("Pool not initialized");
     }
 
-    const pool = this.ledger.pool;
-    const xOut128 = xOut;
-    const yOut128 = yOut;
-    const lpIn128 = lpIn;
+    const pool = this.getPoolState();
 
     // Validate output tokens using multiplication
-    const xLhs = xOut128 * pool.lpCirculatingSupply;
-    const xRhs = lpIn128 * pool.xLiquidity;
+    const xLhs = xOut * pool.lpCirculatingSupply;
+    const xRhs = lpIn * pool.xLiquidity;
     if (xLhs > xRhs) {
       throw new Error("Too much USD requested");
     }
 
-    const yLhs = yOut128 * pool.lpCirculatingSupply;
-    const yRhs = lpIn128 * pool.yLiquidity;
+    const yLhs = yOut * pool.lpCirculatingSupply;
+    const yRhs = lpIn * pool.yLiquidity;
     if (yLhs > yRhs) {
       throw new Error("Too much JPY requested");
     }
 
-    // Update witness reserves
-    this.reservesUSD = pool.xLiquidity - xOut;
-    this.reservesJPY = pool.yLiquidity - yOut;
-
-    // Update pool state
-    this.ledger.pool.xLiquidity = this.reservesUSD;
-    this.ledger.pool.yLiquidity = this.reservesJPY;
-    this.ledger.pool.lpCirculatingSupply = pool.lpCirculatingSupply - lpIn128;
-
-    // Update public ledger
-    this.ledger.lpTotalSupply = this.ledger.pool.lpCirculatingSupply;
-    this.ledger.hashedReserveUSD = this.hashAmount(this.reservesUSD);
-    this.ledger.hashedReserveJPY = this.hashAmount(this.reservesJPY);
-
-    // Send tokens to recipient
+    // Burn LP tokens from sender
     this.ensureUserExists(userId);
     this.removeFromBalance(userId, "LP", lpIn);
+
+    // Update private pool reserves (witness-based)
+    const newX = pool.xLiquidity - xOut;
+    const newY = pool.yLiquidity - yOut;
+    this.privatePool.xLiquidity = newX;
+    this.privatePool.yLiquidity = newY;
+    this.privatePool.lpCirculatingSupply = pool.lpCirculatingSupply - lpIn;
+
+    // Update hash commitments (public proof of reserves)
+    this.ledger.hashedReserveUSD = this.commitAmount(newX);
+    this.ledger.hashedReserveJPY = this.commitAmount(newY);
+
+    // Update LP token supply (public)
+    this.ledger.lpTotalSupply = pool.lpCirculatingSupply - lpIn;
+
+    // Send tokens to recipient (shielded - private)
     this.addToBalance(userId, "USD", xOut);
     this.addToBalance(userId, "JPY", yOut);
 
@@ -284,186 +316,171 @@ export class BearDEXSimulator {
   }
 
   // ========================================================================
-  // SWAPS
+  // SWAPS (WITH PUBLIC CIRCUIT PARAMETERS - NO DIVISION, NO FEES)
   // ========================================================================
 
-  swapUSDToJPY(xIn: bigint, yOut: bigint, userId: string = "user"): LedgerState {
+  swapUSDToJPY(userId: string = "user"): LedgerState {
     if (!this.ledger.poolInitialized) {
       throw new Error("Pool not initialized");
     }
 
-    const currentX = this.reservesUSD;
-    const currentY = this.reservesJPY;
+    // Get private pool reserves (witness-based)
+    const x = this.privatePool.xLiquidity;
+    const y = this.privatePool.yLiquidity;
+    const oraclePrice = this.ledger.oraclePrice;
 
-    // Verify K invariant (constant product maintained)
-    const kValid = this.verifyKInvariant(xIn, yOut, currentX, currentY);
-    if (!kValid) {
-      throw new Error("K invariant violated");
-    }
+    // Get PUBLIC inputs via circuit parameters
+    const dx = this.swapInputs.dx;      // Public: amount of USD to swap
+    const dy = this.swapInputs.dy;      // Public: amount of JPY to receive
 
-    // Verify oracle rate constraint (swap rate >= oracle rate)
-    const oracleValid = this.verifyUSDToJPYOracle(yOut, xIn);
-    if (!oracleValid) {
+    // Verify oracle rate constraint (NO DIVISION - uses multiplication)
+    // dy * SCALE >= dx * oraclePrice
+    const SCALE = 10000n;
+    const rateLhs = dy * SCALE;
+    const rateRhs = dx * oraclePrice;
+    if (rateLhs < rateRhs) {
       throw new Error("Swap rate worse than oracle");
     }
 
-    // Update witness reserves
-    this.reservesUSD = this.reservesUSD + xIn;
-    this.reservesJPY = this.reservesJPY - yOut;
+    // Verify K invariant (NO DIVISION - uses multiplication, NO FEES)
+    // Final state: x' = x + dx, y' = y - dy
+    // K invariant: (x + dx) * (y - dy) >= x * y
+    const kLhs = y * dx;
+    const kRhs = dy * (x + dx);
+    if (kLhs < kRhs) {
+      throw new Error("K invariant violated");
+    }
 
-    // Update pool state
-    this.ledger.pool.xLiquidity = this.reservesUSD;
-    this.ledger.pool.yLiquidity = this.reservesJPY;
+    // Update private pool reserves (witness-based)
+    const newX = x + dx;
+    const newY = y - dy;
+    this.privatePool.xLiquidity = newX;
+    this.privatePool.yLiquidity = newY;
 
-    // Update public ledger
-    this.ledger.hashedReserveUSD = this.hashAmount(this.reservesUSD);
-    this.ledger.hashedReserveJPY = this.hashAmount(this.reservesJPY);
+    // Update hash commitments (public proof of reserves)
+    this.ledger.hashedReserveUSD = this.commitAmount(newX);
+    this.ledger.hashedReserveJPY = this.commitAmount(newY);
 
-    // Update user balances
+    // Update user balances (shielded - private)
     this.ensureUserExists(userId);
-    this.removeFromBalance(userId, "USD", xIn);
-    this.addToBalance(userId, "JPY", yOut);
+    this.removeFromBalance(userId, "USD", dx);
+    this.addToBalance(userId, "JPY", dy);
 
     return this.getLedger();
   }
 
-  swapJPYToUSD(yIn: bigint, xOut: bigint, userId: string = "user"): LedgerState {
+  swapJPYToUSD(userId: string = "user"): LedgerState {
     if (!this.ledger.poolInitialized) {
       throw new Error("Pool not initialized");
     }
 
-    const currentX = this.reservesUSD;
-    const currentY = this.reservesJPY;
+    // Get private pool reserves (witness-based)
+    const x = this.privatePool.xLiquidity;
+    const y = this.privatePool.yLiquidity;
+    const oraclePrice = this.ledger.oraclePrice;
 
-    // Verify K invariant (constant product maintained)
-    // For JPY->USD: we remove USD from X (-xOut) and add JPY to Y (+yIn)
-    // So verifyKInvariant expects (xIn, yOut) where xIn = -xOut, yOut = -yIn
-    // We use a different approach: verify X decreases and Y increases
-    const initialK = this.calcK(currentX, currentY);
-    const newX = currentX - xOut;
-    const newY = currentY + yIn;
-    const finalK = this.calcK(newX, newY);
-    if (finalK < initialK) {
-      throw new Error("K invariant violated");
-    }
+    // Get PUBLIC inputs via circuit parameters
+    const dy = this.swapInputs.dx;      // Public: amount of JPY to swap
+    const dx = this.swapInputs.dy;      // Public: amount of USD to receive
 
-    // Verify oracle rate constraint (swap rate >= inverse oracle rate)
-    const oracleValid = this.verifyJPYToUSDOracle(xOut, yIn);
-    if (!oracleValid) {
+    // Verify oracle rate constraint (NO DIVISION - uses multiplication)
+    // dx * oraclePrice >= dy * SCALE
+    const SCALE = 10000n;
+    const rateLhs = dx * oraclePrice;
+    const rateRhs = dy * SCALE;
+    if (rateLhs < rateRhs) {
       throw new Error("Swap rate worse than oracle");
     }
 
-    // Update witness reserves
-    this.reservesUSD = this.reservesUSD - xOut;
-    this.reservesJPY = this.reservesJPY + yIn;
+    // Verify K invariant (NO DIVISION - uses multiplication, NO FEES)
+    // Final state: x' = x - dx, y' = y + dy
+    // K invariant: (x - dx) * (y + dy) >= x * y
+    const kLhs = x * dy;
+    const kRhs = dx * (y + dy);
+    if (kLhs < kRhs) {
+      throw new Error("K invariant violated");
+    }
 
-    // Update pool state
-    this.ledger.pool.xLiquidity = this.reservesUSD;
-    this.ledger.pool.yLiquidity = this.reservesJPY;
+    // Update private pool reserves (witness-based)
+    const newX = x - dx;
+    const newY = y + dy;
+    this.privatePool.xLiquidity = newX;
+    this.privatePool.yLiquidity = newY;
 
-    // Update public ledger
-    this.ledger.hashedReserveUSD = this.hashAmount(this.reservesUSD);
-    this.ledger.hashedReserveJPY = this.hashAmount(this.reservesJPY);
+    // Update hash commitments (public proof of reserves)
+    this.ledger.hashedReserveUSD = this.commitAmount(newX);
+    this.ledger.hashedReserveJPY = this.commitAmount(newY);
 
-    // Update user balances
+    // Update user balances (shielded - private)
     this.ensureUserExists(userId);
-    this.removeFromBalance(userId, "JPY", yIn);
-    this.addToBalance(userId, "USD", xOut);
+    this.removeFromBalance(userId, "JPY", dy);
+    this.addToBalance(userId, "USD", dx);
 
     return this.getLedger();
-  }
-
-  // ========================================================================
-  // ORACLE VERIFICATION
-  // ========================================================================
-
-  private verifyUSDToJPYOracle(yOut: bigint, xIn: bigint): boolean {
-    const SCALE = 10000n;
-    const lhs = yOut * SCALE;
-    const rhs = this.ledger.oracleJpyPrice * xIn;
-    return lhs >= rhs;
-  }
-
-  private verifyJPYToUSDOracle(xOut: bigint, yIn: bigint): boolean {
-    const SCALE = 10000n;
-    const lhs = xOut * this.ledger.oracleJpyPrice;
-    const rhs = SCALE * yIn;
-    return lhs >= rhs;
-  }
-
-  // ========================================================================
-  // K INVARIANT VERIFICATION
-  // ========================================================================
-
-  private verifyKInvariant(
-    xIn: bigint,
-    yOut: bigint,
-    currentX: bigint,
-    currentY: bigint
-  ): boolean {
-    const initialK = this.calcK(currentX, currentY);
-    const newX = currentX + xIn;
-    const newY = currentY - yOut;
-    const finalK = this.calcK(newX, newY);
-    return finalK >= initialK;
-  }
-
-  private calcK(x: bigint, y: bigint): bigint {
-    // Cast to smaller Uint to prevent overflow (matching contract)
-    const x124 = x & ((1n << 124n) - 1n);
-    const y124 = y & ((1n << 124n) - 1n);
-    return x124 * y124;
   }
 
   // ========================================================================
   // HELPER FUNCTIONS
-  // ========================================================================
-
-  private hashAmount(amount: bigint): Uint8Array {
-    // Simplified hash - in contract this uses commitAmount
-    const amountBytes = new Uint8Array(32);
-    const amountStr = amount.toString(16).padStart(64, '0');
-    for (let i = 0; i < 32; i++) {
-      amountBytes[i] = parseInt(amountStr.slice(i * 2, i * 2 + 2), 16);
-    }
-    return amountBytes;
-  }
+  // ============================================================================
 
   private ensureUserExists(userId: string): void {
-    if (!this.userKeys.has(userId)) {
-      this.userKeys.set(userId, this.generateRandomKey());
+    if (!this.userBalances.has(userId)) {
       this.userBalances.set(userId, new Map());
     }
   }
 
   private addToBalance(userId: string, token: string, amount: bigint): void {
     const balances = this.userBalances.get(userId);
-    if (balances) {
-      const current = balances.get(token) || 0n;
-      balances.set(token, current + amount);
-    }
+    if (!balances) return;
+    const current = balances.get(token) ?? 0n;
+    balances.set(token, current + amount);
   }
 
   private removeFromBalance(userId: string, token: string, amount: bigint): void {
     const balances = this.userBalances.get(userId);
-    if (balances) {
-      const current = balances.get(token) || 0n;
-      if (current < amount) {
-        throw new Error(`Insufficient ${token} balance`);
-      }
-      balances.set(token, current - amount);
+    if (!balances) {
+      throw new Error(`User not found: ${userId}`);
     }
+    const current = balances.get(token) ?? 0n;
+    if (current < amount) {
+      throw new Error(`Insufficient ${token} balance`);
+    }
+    balances.set(token, current - amount);
   }
 
-  private generateRandomKey(): Uint8Array {
-    return generateNonce();
+  /**
+   * Calculate what constant product AMM would give for USD->JPY (for off-chain calculation).
+   * Users calculate this offline to determine expected output.
+   * 
+   * Formula: dy = (y * dx) / (x + dx)
+   * 
+   * NOTE: This is NOT used in the circuit - it's only for users to
+   * calculate expected swap outcomes off-chain.
+   */
+  calculateConstantProductUSDToJPY(x: bigint, y: bigint, dx: bigint): bigint {
+    return (y * dx) / (x + dx);
   }
 
-  private equalKeys(key1: Uint8Array, key2: Uint8Array): boolean {
-    if (key1.length !== key2.length) return false;
-    for (let i = 0; i < key1.length; i++) {
-      if (key1[i] !== key2[i]) return false;
-    }
-    return true;
+  /**
+   * Calculate what constant product AMM would give for JPY->USD (for off-chain calculation).
+   * Users calculate this offline to determine expected output.
+   * 
+   * Formula: dx = (x * dy) / (y + dy)
+   * 
+   * NOTE: This is NOT used in the circuit - it's only for users to
+   * calculate expected swap outcomes off-chain.
+   */
+  calculateConstantProductJPYToUSD(x: bigint, y: bigint, dy: bigint): bigint {
+    return (x * dy) / (y + dy);
+  }
+
+  /**
+   * Calculate K invariant for monitoring.
+   * K = x * y
+   * 
+   * This should never decrease after a valid swap.
+   */
+  calculateKInvariant(x: bigint, y: bigint): bigint {
+    return this.calcK(x, y);
   }
 }
