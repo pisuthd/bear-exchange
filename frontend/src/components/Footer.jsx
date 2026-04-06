@@ -17,7 +17,7 @@ function Footer() {
               BearEx
             </Link>
             <p className="text-[#94a3b8] text-sm leading-relaxed">
-              Private FX with Provable Best Execution on Midnight
+              Private AMM with Shielded Liquidity on Midnight
             </p>
           </div>
 

@@ -21,17 +21,17 @@ function Hero() {
           <div className="text-left">
             {/* Pre-Headline */}
             <p className="mb-4 text-sm md:text-base lg:text-xl font-medium text-[#3eddfd] font-mono">
-              The First Private FX Exchange on Midnight
+              Private AMM with Shielded Liquidity on Midnight
             </p>
 
             {/* Main Headline */}
             <h1 className=" text-4xl lg:text-[56px] font-bold mb-4 leading-tight text-[#f8fafc] tracking-tight">
-              Trade Stablecoins at Provably Better Rates
+              Hidden Liquidity. Proven Execution.
             </h1>
 
             {/* Subheadline */}
-            <h2 className=" text-base  lg:text-[24px] mb-4   text-[#cbd5e1]  ">
-              Execute FX swaps against hidden liquidity, where each trade proves <span className='italic font-semibold'>{`P_execution > P_oracle`} </span> in zero-knowledge
+            <h2 className=" text-base  lg:text-[24px] mb-8   text-[#cbd5e1]  ">
+              Trade and provide liquidity in fully shielded pools. Oracle-referenced pricing with ZK proofs — privacy by default, compliance when needed.
             </h2>
             {/* CTA Buttons */}
             <div className="flex  flex-row gap-4 mb-12">
@@ -45,9 +45,9 @@ function Hero() {
                 to="/credentials"
                 className="px-8 py-4 bg-[#1e293b] text-[#3eddfd] font-semibold rounded-lg transition-all hover:bg-[#334155] hover:shadow-[0_0_20px_rgba(62,223,223,0.2)] border border-[#3eddfd]/30 text-center"
               >
-                View Proofs
+                Add Liquidity
               </Link>
-            </div> 
+            </div>
           </div>
 
           {/* Right Side - Brand Image */}
