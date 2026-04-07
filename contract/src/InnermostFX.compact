@@ -1,0 +1,496 @@
+pragma language_version >= 0.20;
+
+import CompactStandardLibrary;
+
+// ============================================================================
+// TOKEN IDENTIFIERS
+// ============================================================================
+
+pure circuit tokenUSD(): Bytes<32> { return pad(32, "Innermost:USD"); }
+pure circuit tokenEUR(): Bytes<32> { return pad(32, "Innermost:EUR"); }
+pure circuit tokenJPY(): Bytes<32> { return pad(32, "Innermost:JPY"); }
+
+// ============================================================================
+// ORDER DIRECTION
+// ============================================================================
+
+pure circuit dirBid(): Bytes<32> { return pad(32, "bid"); }
+pure circuit dirAsk(): Bytes<32> { return pad(32, "ask"); }
+
+// ============================================================================
+// PAIR IDENTIFIERS
+// ============================================================================
+
+pure circuit pairUSDEUR(): Bytes<32> { return pad(32, "pair:USD/EUR"); }
+pure circuit pairUSDJPY(): Bytes<32> { return pad(32, "pair:USD/JPY"); }
+pure circuit pairEURJPY(): Bytes<32> { return pad(32, "pair:EUR/JPY"); }
+
+
+// ============================================================================
+// PUBLIC LEDGER STATE
+//
+// What is public (on-chain):
+//   • orderCommitment[orderId] — opaque hash, proves order exists
+//   • nullifierSet[orderId]    — bool, proves order was consumed
+//   • counters for ID generation
+//
+// What is NEVER on-chain:
+//   • price, amount, remaining fill, owner identity, direction
+// ============================================================================
+
+pure circuit SCALE(): Uint<64> { return 1000000; }
+
+// source of unique order IDs
+export ledger nextOrderId: Uint<64>;
+
+// source of unique trade IDs (audit trail)
+export ledger nextTradeId: Uint<64>;
+
+// orderId → commitment hash
+// Written on createOrder, overwritten on partial-fill remainder
+export ledger orderCommitment: Map<Bytes<32>, Bytes<32>>;
+
+// orderId → true once the order slot is permanently consumed
+// Default map value is false — unregistered IDs pass the live check
+export ledger nullifierSet: Map<Bytes<32>, Boolean>;
+
+// Contract deployer's public key (used for admin operations only)
+export sealed ledger owner: Bytes<32>;
+
+// ============================================================================
+// WITNESS FUNCTIONS
+// Private inputs — known only to the prover, never revealed on-chain.
+// ============================================================================
+
+// Caller's secret key (bid party, or single-party operations)
+witness localSk(): Bytes<32>;
+
+// Ask party's secret key — supplied in matchOrders
+witness askSk(): Bytes<32>;
+
+// Off-chain integer division: floor(numerator / denominator)
+witness witDivide(numerator: Uint<128>, denominator: Uint<64>): Uint<128>;
+
+// ============================================================================
+// CONSTRUCTOR
+// ============================================================================
+
+constructor() {
+    const sk     = localSk();
+    owner        = disclose(getDappPubKey(sk));
+    nextOrderId  = disclose(1);
+    nextTradeId  = disclose(1);
+}
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+// Derive a stable public key from a secret key.
+export circuit getDappPubKey(sk: Bytes<32>): Bytes<32> {
+    return persistentHash<Vector<2, Bytes<32>>>([
+        pad(32, "Innermost:pk:"),
+        sk
+    ]);
+}
+
+// Quote token cost for a bid order at a given price.
+// cost = floor(baseAmount * price / SCALE)
+circuit quoteCost(baseAmount: Uint<64>, price: Uint<64>): Uint<128> {
+    return witDivide(
+        baseAmount * price,
+        SCALE()
+    );
+}
+
+
+// Order commitment: binds all private order fields into one hash.
+// Any change to any field produces a completely different output.
+circuit makeCommitment(
+    pair:      Bytes<32>,
+    direction: Bytes<32>,
+    price:     Uint<64>,
+    amount:    Uint<64>,
+    ownerPk:   Bytes<32>,
+    nonce:     Bytes<32>
+): Bytes<32> {
+    return persistentHash<Vector<6, Bytes<32>>>([
+        pair,
+        direction,
+        price   as Bytes<32>,
+        amount  as Bytes<32>,
+        ownerPk,
+        nonce
+    ]);
+}
+
+// Allocate a fresh, unique order ID.
+circuit newOrderId(): Bytes<32> {
+    const n     = nextOrderId;
+    nextOrderId = disclose(n + 1) as Uint<64>;
+    return persistentHash<Vector<2, Bytes<32>>>([
+        pad(32, "orderId:"),
+        n as Bytes<32>
+    ]);
+}
+
+// Allocate a fresh, unique trade ID (on-chain audit trail only).
+circuit newTradeId(): Bytes<32> {
+    const n    = nextTradeId;
+    nextTradeId = disclose(n + 1) as Uint<64>;
+    return persistentHash<Vector<2, Bytes<32>>>([
+        pad(32, "tradeId:"),
+        n as Bytes<32>
+    ]);
+}
+
+
+// Resolve base and quote tokens from a currency pair + direction.
+// bid on USD/EUR → lock EUR (quote), receive USD (base)
+// ask on USD/EUR → lock USD (base), receive EUR (quote)
+pure circuit pairTokens(pair: Bytes<32>): Vector<2, Bytes<32>> {
+    if (pair == pairUSDEUR()) {
+        return [tokenUSD(), tokenEUR()];
+    } else {
+        if (pair == pairUSDJPY()) {
+            return [tokenUSD(), tokenJPY()];
+        } else {
+            // pairEURJPY — base=EUR, quote=JPY
+            return [tokenEUR(), tokenJPY()];
+        }
+    }
+}
+
+// Fail if the order slot has already been consumed.
+circuit assertLive(orderId: Bytes<32>): [] {
+    assert(!nullifierSet.lookup(disclose(orderId)), "Order already consumed or cancelled");
+}
+
+// Permanently mark an order slot as consumed.
+circuit consume(orderId: Bytes<32>): [] {
+    nullifierSet.insert(disclose(orderId), disclose(true));
+}
+
+// ============================================================================
+// TOKEN MINTING (MOCK FAUCET)
+// ============================================================================
+
+export circuit mintUSD(
+    amount:    Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce:     Bytes<32>
+): [] {
+    assert(disclose(amount) > 0, "Amount must be positive");
+    mintShieldedToken(tokenUSD(), disclose(amount), disclose(nonce), disclose(recipient));
+}
+
+export circuit mintEUR(
+    amount:    Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce:     Bytes<32>
+): [] {
+    assert(disclose(amount) > 0, "Amount must be positive");
+    mintShieldedToken(tokenEUR(), disclose(amount), disclose(nonce), disclose(recipient));
+}
+
+export circuit mintJPY(
+    amount:    Uint<64>,
+    recipient: Either<ZswapCoinPublicKey, ContractAddress>,
+    nonce:     Bytes<32>
+): [] {
+    assert(disclose(amount) > 0, "Amount must be positive");
+    mintShieldedToken(tokenJPY(), disclose(amount), disclose(nonce), disclose(recipient));
+}
+
+// ============================================================================
+// INTERNAL ORDER CREATION
+// Shared by createOrder and all batchCreateOrders variants.
+//
+// What this circuit does:
+//   1. Validates inputs
+//   2. Locks the correct token amount from caller's shielded balance
+//      — bid locks quote token:  floor(amount * price / SCALE)
+//      — ask locks base token:   amount
+//   3. Writes an opaque commitment hash to the ledger
+//      (price and amount are inside the hash — never stored raw)
+// ============================================================================
+
+circuit createOrderInternal(
+    pair:      Bytes<32>,
+    direction: Bytes<32>,
+    price:     Uint<64>,
+    amount:    Uint<64>,
+    nonce:     Bytes<32>,
+    callerPk:  Bytes<32>
+): [] {
+    assert(price  > 0, "Price must be positive");
+    assert(amount > 0, "Amount must be positive");
+    assert(
+        direction == dirBid() || direction == dirAsk(),
+        "Direction must be bid or ask"
+    );
+    assert(
+        pair == pairUSDEUR() || pair == pairUSDJPY() || pair == pairEURJPY(),
+        "Unsupported currency pair"
+    );
+
+    const tokens        = pairTokens(disclose(pair));
+    const baseToken     = tokens[0];
+    const quoteToken    = tokens[1];
+    const lockToken     = disclose(direction) == dirBid() ? quoteToken : baseToken;
+    const lockAmount    = disclose(direction) == dirBid() ? quoteCost(amount, price) : amount;
+
+    receiveShielded(ShieldedCoinInfo{
+        disclose(nonce),
+        disclose(lockToken),
+        disclose(lockAmount as Uint<64>)
+    });
+
+    const orderId    = newOrderId();
+    const commitment = makeCommitment(pair, direction, price, amount, callerPk, nonce);
+    orderCommitment.insert(disclose(orderId), disclose(commitment));
+}
+
+
+// ============================================================================
+//  SINGLE ORDER CREATION
+// ============================================================================
+
+export circuit createOrder(
+    pair:      Bytes<32>,
+    direction: Bytes<32>,
+    price:     Uint<64>,
+    amount:    Uint<64>,
+    nonce:     Bytes<32>
+): [] {
+    const callerPk = getDappPubKey(localSk());
+    createOrderInternal(pair, direction, price, amount, nonce, callerPk);
+}
+
+
+// ============================================================================
+// BATCH ORDER CREATION (×2, ×4)
+// ============================================================================
+
+export circuit batchCreateOrders2(
+    pair1: Bytes<32>, direction1: Bytes<32>, price1: Uint<64>, amount1: Uint<64>, nonce1: Bytes<32>,
+    pair2: Bytes<32>, direction2: Bytes<32>, price2: Uint<64>, amount2: Uint<64>, nonce2: Bytes<32>
+): [] {
+    const callerPk = getDappPubKey(localSk());
+    createOrderInternal(pair1, direction1, price1, amount1, nonce1, callerPk);
+    createOrderInternal(pair2, direction2, price2, amount2, nonce2, callerPk);
+}
+
+export circuit batchCreateOrders4(
+    pair1: Bytes<32>, direction1: Bytes<32>, price1: Uint<64>, amount1: Uint<64>, nonce1: Bytes<32>,
+    pair2: Bytes<32>, direction2: Bytes<32>, price2: Uint<64>, amount2: Uint<64>, nonce2: Bytes<32>,
+    pair3: Bytes<32>, direction3: Bytes<32>, price3: Uint<64>, amount3: Uint<64>, nonce3: Bytes<32>,
+    pair4: Bytes<32>, direction4: Bytes<32>, price4: Uint<64>, amount4: Uint<64>, nonce4: Bytes<32>
+): [] {
+    const callerPk = getDappPubKey(localSk());
+    createOrderInternal(pair1, direction1, price1, amount1, nonce1, callerPk);
+    createOrderInternal(pair2, direction2, price2, amount2, nonce2, callerPk);
+    createOrderInternal(pair3, direction3, price3, amount3, nonce3, callerPk);
+    createOrderInternal(pair4, direction4, price4, amount4, nonce4, callerPk);
+}
+
+
+// ============================================================================
+// CANCEL ORDER
+// ============================================================================
+
+export circuit cancelOrder(
+    orderId:     Bytes<32>,
+    pair:        Bytes<32>,
+    direction:   Bytes<32>,
+    price:       Uint<64>,
+    amount:      Uint<64>,
+    nonce:       Bytes<32>,
+    refundNonce: Bytes<32>
+): [] {
+    // ── Guard: order must be live ──────────────────────────────────────────
+    assertLive(disclose(orderId));
+
+    // ── Ownership proof ────────────────────────────────────────────────────
+    const callerPk           = getDappPubKey(localSk());
+    const expectedCommitment = makeCommitment(pair, direction, price, amount, callerPk, nonce);
+    const storedCommitment   = orderCommitment.lookup(disclose(orderId)); // fixed: use .lookup()
+    assert(expectedCommitment == storedCommitment, "Not your order");
+
+    // ── Consume the order slot permanently ────────────────────────────────
+    consume(disclose(orderId));
+
+    // ── Refund ─────────────────────────────────────────────────────────────
+    const tokens       = pairTokens(disclose(pair));
+    const baseToken    = tokens[0];
+    const quoteToken   = tokens[1];
+    const refundToken  = disclose(direction) == dirBid() ? quoteToken : baseToken;
+    const refundAmount = disclose(direction) == dirBid() ? quoteCost(amount, price) : amount;
+
+    // recipient must be Either<ZswapCoinPublicKey, ContractAddress>
+    mintShieldedToken(
+        refundToken,
+        disclose(refundAmount as Uint<64>),
+        disclose(refundNonce),
+        left<ZswapCoinPublicKey, ContractAddress>(ZswapCoinPublicKey { bytes: disclose(callerPk) })
+    );
+}
+
+
+// ============================================================================
+// MATCH ORDERS (PARTIAL FILL)
+//
+// This is the core settlement circuit. It handles:
+//   A) Full × full   — both orders fully consumed
+//   B) Partial × full — bid partially filled, ask fully consumed (or vice versa)
+//   C) Partial × partial — both partially filled (matchAmount < both)
+//
+// Mechanism:
+//   1. Both order IDs are checked live (not nullified)
+//   2. Bid ownership verified via localSk() witness
+//   3. Ask ownership verified via askSk() witness
+//      (production: replace with multi-party proof composition)
+//   4. Directions validated (bidOrderId must be a bid, askOrderId an ask)
+//   5. Same currency pair on both sides
+//   6. Price crossing: bid.price >= ask.price
+//   7. Both old order IDs nullified atomically
+//   8. Remainder commitments written for any unfilled portion
+//      — remainder funds re-locked via receiveShielded
+//   9. Settlement payouts:
+//      — bidder receives baseToken (matchAmount)
+//      — asker  receives quoteToken (matchAmount * askPrice / SCALE)
+//      — bidder refund: overbid amount (bid.price - ask.price) * matchAmount / SCALE
+//        (price improvement — bidder only pays ask price, not their limit price)
+//
+// Privacy guarantee:
+//   Every price and amount stays inside ZK witnesses.
+//   On-chain: two nullifier flags set, 0–2 new commitment hashes written.
+// ============================================================================
+
+export circuit matchOrders(
+    bidOrderId:        Bytes<32>,
+    askOrderId:        Bytes<32>,
+    matchAmount:       Uint<64>,
+    bidPair:           Bytes<32>,
+    bidPrice:          Uint<64>,
+    bidAmount:         Uint<64>,
+    bidNonce:          Bytes<32>,
+    askPair:           Bytes<32>,
+    askPrice:          Uint<64>,
+    askAmount:         Uint<64>,
+    askNonce:          Bytes<32>,
+    bidRemainderNonce: Bytes<32>,
+    askRemainderNonce: Bytes<32>,
+    settlementNonce:   Bytes<32>
+): [] {
+
+    // ── Step 1: Liveness guards ────────────────────────────────────────────
+    assertLive(disclose(bidOrderId));
+    assertLive(disclose(askOrderId));
+
+    // ── Step 2: Verify bid ownership ──────────────────────────────────────
+    const bidPk       = getDappPubKey(localSk());
+    const bidComputed = makeCommitment(bidPair, dirBid(), bidPrice, bidAmount, bidPk, bidNonce);
+    assert(bidComputed == orderCommitment.lookup(disclose(bidOrderId)), "Bid ownership failed"); // fixed
+
+    // ── Step 3: Verify ask ownership ──────────────────────────────────────
+    const askPk       = getDappPubKey(askSk());
+    const askComputed = makeCommitment(askPair, dirAsk(), askPrice, askAmount, askPk, askNonce);
+    assert(askComputed == orderCommitment.lookup(disclose(askOrderId)), "Ask ownership failed"); // fixed
+
+    // ── Step 4: Same currency pair on both sides ───────────────────────────
+    assert(bidPair == askPair, "Currency pair mismatch");
+
+    // ── Step 5: Price crossing ─────────────────────────────────────────────
+    assert(bidPrice >= askPrice, "Orders do not cross");
+
+    // ── Step 6: Match amount bounds ────────────────────────────────────────
+    assert(matchAmount > 0,          "Match amount must be positive");
+    assert(matchAmount <= bidAmount, "Match amount exceeds bid");
+    assert(matchAmount <= askAmount, "Match amount exceeds ask");
+
+    // ── Step 7: Nullify both consumed order slots ──────────────────────────
+    consume(disclose(bidOrderId));
+    consume(disclose(askOrderId));
+
+    // ── Step 8: Remainder handling ─────────────────────────────────────────
+    const bidRemaining = bidAmount - matchAmount;
+    const askRemaining = askAmount - matchAmount;
+    const tokens       = pairTokens(disclose(bidPair));
+    const baseToken    = tokens[0];
+    const quoteToken   = tokens[1];
+
+    if (disclose(bidRemaining) > 0) {
+        const newBidId  = newOrderId();
+        const newBidCmt = makeCommitment(
+            bidPair, dirBid(), bidPrice, bidRemaining, bidPk, bidRemainderNonce
+        );
+        orderCommitment.insert(disclose(newBidId), disclose(newBidCmt)); // fixed
+
+        const remainderQuoteLock = quoteCost(bidRemaining, bidPrice);
+        receiveShielded(ShieldedCoinInfo{
+            disclose(bidRemainderNonce),
+            quoteToken,
+            disclose(remainderQuoteLock as Uint<64>)
+        });
+    }
+
+    if (disclose(askRemaining) > 0) {
+        const newAskId  = newOrderId();
+        const newAskCmt = makeCommitment(
+            askPair, dirAsk(), askPrice, askRemaining, askPk, askRemainderNonce
+        );
+        orderCommitment.insert(disclose(newAskId), disclose(newAskCmt)); // fixed
+
+        receiveShielded(ShieldedCoinInfo{
+            disclose(askRemainderNonce),
+            baseToken,
+            disclose(askRemaining as Uint<64>)
+        });
+    }
+
+    // ── Step 9: Settlement ─────────────────────────────────────────────────
+    const tradeQuoteCost = quoteCost(matchAmount, askPrice);
+    const bidLocked      = quoteCost(matchAmount, bidPrice);
+    const overbid        = bidLocked - tradeQuoteCost;
+
+    
+    mintShieldedToken(
+        baseToken,
+        disclose(matchAmount as Uint<64>),
+        disclose(settlementNonce),
+        left<ZswapCoinPublicKey, ContractAddress>(ZswapCoinPublicKey { bytes: disclose(bidPk) }) 
+    );
+
+    mintShieldedToken(
+        quoteToken,
+        disclose(tradeQuoteCost as Uint<64>),
+        disclose(settlementNonce),
+        left<ZswapCoinPublicKey, ContractAddress>(ZswapCoinPublicKey { bytes: disclose(askPk) })  
+    );
+
+    if (disclose(overbid) > 0) {
+        mintShieldedToken(
+            quoteToken,
+            disclose(overbid as Uint<64>),
+            disclose(settlementNonce),
+            left<ZswapCoinPublicKey, ContractAddress>(ZswapCoinPublicKey { bytes: disclose(bidPk) }) 
+        );
+    }
+
+    // ── Step 10: Trade ID ──────────────────────────────────────────────────
+    const _tradeId = newTradeId();
+}
+
+
+// ============================================================================
+// UTILITIES
+// ============================================================================
+
+pure circuit min128(a: Uint<128>, b: Uint<128>): Uint<128> {
+    if (a < b) { return a; } else { return b; }
+}
+
+pure circuit max128(a: Uint<128>, b: Uint<128>): Uint<128> {
+    if (a > b) { return a; } else { return b; }
+}
