@@ -4,23 +4,23 @@
   import type { MidnightProviders } from '@midnight-ntwrk/midnight-js/types';
   import type { DeployedContract, FoundContract } from '@midnight-ntwrk/midnight-js/contracts';
   import type { ProvableCircuitId } from '@midnight-ntwrk/compact-js';
-  import { Contract, ledger, type Ledger } from '../../contract/src/managed/beardex/contract/index.js';
-  import type { BearDEXPrivateState as WitnessBearDEXPrivateState } from './witnesses.js';
+  import { Contract, ledger, type Ledger } from '../../contract/dist/managed/innermost/contract/index.js';
+  import type { InnermostFXPrivateState as WitnessInnermostFXPrivateState } from './witnesses.js';
 
   // Import private state type from witnesses
-  export type BearDEXPrivateState = WitnessBearDEXPrivateState;
+  export type InnermostFXPrivateState = WitnessInnermostFXPrivateState;
 
-export type BearDEXCircuits = ProvableCircuitId<Contract<BearDEXPrivateState>>;
+  export type InnermostFXCircuits = ProvableCircuitId<Contract<InnermostFXPrivateState>>;
 
-export const BearDEXPrivateStateId = 'beardexPrivateState';
+  export const InnermostFXPrivateStateId = 'innermostfxPrivateState';
 
-export type BearDEXProviders = MidnightProviders<BearDEXCircuits, typeof BearDEXPrivateStateId, BearDEXPrivateState>;
+  export type InnermostFXProviders = MidnightProviders<InnermostFXCircuits, typeof InnermostFXPrivateStateId, InnermostFXPrivateState>;
 
-export type BearDEXContract = Contract<BearDEXPrivateState>;
+  export type InnermostFXContract = Contract<InnermostFXPrivateState>;
 
-export type DeployedBearDEXContract = DeployedContract<BearDEXContract> | FoundContract<BearDEXContract>;
+  export type DeployedInnermostFXContract = DeployedContract<InnermostFXContract> | FoundContract<InnermostFXContract>;
 
-// Helper to get ledger state from contract
-export { ledger };
+  // Helper to get ledger state from contract
+  export { ledger };
 
-export type BearDEXLedger = Ledger;
+  export type InnermostFXLedger = Ledger;

@@ -7,9 +7,9 @@ import { setNetworkId } from '@midnight-ntwrk/midnight-js/network-id';
 export const currentDir = path.resolve(new URL(import.meta.url).pathname, '..');
 
 export const contractConfig = {
-  privateStateStoreName: 'beardex-private-state',
-  zkConfigPath: path.resolve(currentDir, '..', '..', 'contract', 'src', 'managed', 'beardex'),
-  witnessStatePath: path.resolve(process.env.HOME || '.', '.beardex', 'witnesses.json'),
+  privateStateStoreName: 'innermostfx-private-state',
+  zkConfigPath: path.resolve(currentDir, '..', '..', 'contract', 'dist', 'managed', 'innermost'),
+  witnessStatePath: path.resolve(process.env.HOME || '.', '.innermostfx', 'witnesses.json'),
 };
 
 export interface Config {

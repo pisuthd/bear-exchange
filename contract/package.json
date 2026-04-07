@@ -16,10 +16,10 @@
     }
   },
   "scripts": {
-    "compact": "compact compile src/BearDEX.compact src/managed/beardex",
+    "compact": "compact compile src/InnermostFX.compact src/managed/innermost",
     "test": "vitest run",
     "test:compile": "npm run compact && vitest run",
-    "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/counter.compact ./dist && cp ./src/BearDEX.compact ./dist",
+    "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/InnermostFX.compact ./dist",
     "lint": "eslint src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "deploy:preprod": "tsx src/deploy-preprod.ts"

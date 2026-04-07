@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { type ContractAddress } from '@midnight-ntwrk/compact-runtime';
-import { Contract, ledger, pureCircuits } from '../../contract/src/managed/beardex/contract/index.js';
+import { Contract, ledger, pureCircuits } from '../../contract/dist/managed/innermost/contract/index.js';
 import * as ledgerLib from '@midnight-ntwrk/ledger-v8';
 import { unshieldedToken } from '@midnight-ntwrk/ledger-v8';
 import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js/contracts';
@@ -25,12 +25,12 @@ import { type Logger } from 'pino';
 import * as Rx from 'rxjs';
 import { WebSocket } from 'ws';
 import {
-  type BearDEXCircuits,
-  type BearDEXContract,
-  BearDEXPrivateStateId,
-  type BearDEXProviders,
-  type DeployedBearDEXContract,
-  type BearDEXPrivateState,
+  type InnermostFXCircuits,
+  type InnermostFXContract,
+  InnermostFXPrivateStateId,
+  type InnermostFXProviders,
+  type DeployedInnermostFXContract,
+  type InnermostFXPrivateState,
 } from './common-types.js';
 import { type Config, contractConfig } from './config.js';
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
@@ -43,7 +43,7 @@ import {
   ShieldedCoinPublicKey,
   ShieldedEncryptionPublicKey,
 } from '@midnight-ntwrk/wallet-sdk-address-format';
-import { witnesses, generateSecretKey } from './witnesses.js';
+import { witnesses, generateSecretKey, generateNonce } from './witnesses.js';
 import type { WitnessState } from './witness-state.js';
 import { saveWitnessState, loadWitnessState } from './witness-state.js';
 import { CompiledContract } from '@midnight-ntwrk/compact-js';
@@ -54,8 +54,8 @@ let logger: Logger;
 // @ts-expect-error: It's needed to enable WebSocket usage through apollo
 globalThis.WebSocket = WebSocket;
 
-// Pre-compile the BearDEX contract with ZK circuit assets and witnesses
-const beardexCompiledContract = CompiledContract.make('beardex', Contract).pipe(
+// Pre-compile the InnermostFX contract with ZK circuit assets and witnesses
+const innermostfxCompiledContract = CompiledContract.make('innermost', Contract).pipe(
   CompiledContract.withWitnesses(witnesses),
   CompiledContract.withCompiledFileAssets(contractConfig.zkConfigPath),
 );
@@ -67,16 +67,16 @@ export interface WalletContext {
   unshieldedKeystore: UnshieldedKeystore;
 }
 
-export interface BearDEXContractInstance {
-  contract: DeployedBearDEXContract;
+export interface InnermostFXContractInstance {
+  contract: DeployedInnermostFXContract;
   witnessState: WitnessState;
 }
 
 /**
- * Get BearDEX ledger state
+ * Get InnermostFX ledger state
  */
-export const getBearDEXLedgerState = async (
-  providers: BearDEXProviders,
+export const getInnermostFXLedgerState = async (
+  providers: InnermostFXProviders,
   contractAddress: ContractAddress,
 ): Promise<any> => {
   assertIsContractAddress(contractAddress);
@@ -89,13 +89,13 @@ export const getBearDEXLedgerState = async (
 };
 
 /**
- * Join an existing BearDEX contract
+ * Join an existing InnermostFX contract
  */
 export const joinContract = async (
-  providers: BearDEXProviders,
+  providers: InnermostFXProviders,
   contractAddress: string,
-): Promise<BearDEXContractInstance> => {
-  logger.info('Joining existing BearDEX contract...');
+): Promise<InnermostFXContractInstance> => {
+  logger.info('Joining existing InnermostFX contract...');
 
   // Load witness state to get the secret key
   const witnessState = loadWitnessState();
@@ -104,44 +104,42 @@ export const joinContract = async (
   }
 
   // Create private state from stored secret key
-  const privateState: BearDEXPrivateState = {
+  const privateState: InnermostFXPrivateState = {
     secretKey: Buffer.from(witnessState.secretKey, 'hex'),
   };
 
-  const beardexContract = await findDeployedContract(providers, {
+  const innermostfxContract = await findDeployedContract(providers, {
     contractAddress,
-    compiledContract: beardexCompiledContract,
-    privateStateId: BearDEXPrivateStateId,
+    compiledContract: innermostfxCompiledContract,
+    privateStateId: InnermostFXPrivateStateId,
     initialPrivateState: privateState,
   });
-  logger.info(`Joined contract at address: ${beardexContract.deployTxData.public.contractAddress}`);
+  logger.info(`Joined contract at address: ${innermostfxContract.deployTxData.public.contractAddress}`);
 
-  return { contract: beardexContract, witnessState };
+  return { contract: innermostfxContract, witnessState };
 };
 
 /**
- * Deploy a new BearDEX contract
+ * Deploy a new InnermostFX contract
  */
 export const deploy = async (
-  providers: BearDEXProviders,
-  oraclePrice: bigint,
-): Promise<BearDEXContractInstance> => {
-  logger.info('Deploying BearDEX contract...');
+  providers: InnermostFXProviders,
+): Promise<InnermostFXContractInstance> => {
+  logger.info('Deploying InnermostFX contract...');
 
   // Generate a random secret key for the dapp
   const secretKey = generateSecretKey();
-  const privateState: BearDEXPrivateState = {
+  const privateState: InnermostFXPrivateState = {
     secretKey,
   };
 
-  const beardexContract = await deployContract(providers, {
-    privateStateId: BearDEXPrivateStateId,
-    compiledContract: beardexCompiledContract,
+  const innermostfxContract = await deployContract(providers, {
+    privateStateId: InnermostFXPrivateStateId,
+    compiledContract: innermostfxCompiledContract,
     initialPrivateState: privateState,
-    args: [oraclePrice],
   });
 
-  const contractAddress = beardexContract.deployTxData.public.contractAddress;
+  const contractAddress = innermostfxContract.deployTxData.public.contractAddress;
   logger.info(`Deployed contract at address: ${contractAddress}`);
 
   // Store witness state with secret key for reconnection
@@ -151,7 +149,7 @@ export const deploy = async (
   };
   saveWitnessState(witnessState);
 
-  return { contract: beardexContract, witnessState };
+  return { contract: innermostfxContract, witnessState };
 };
 
 /**
@@ -497,11 +495,11 @@ ${DIV}
  */
 export const configureProviders = async (ctx: WalletContext, config: Config) => {
   const walletAndMidnightProvider = await createWalletAndMidnightProvider(ctx);
-  const zkConfigProvider = new NodeZkConfigProvider<BearDEXCircuits>(contractConfig.zkConfigPath);
+  const zkConfigProvider = new NodeZkConfigProvider<InnermostFXCircuits>(contractConfig.zkConfigPath);
   const accountId = walletAndMidnightProvider.getCoinPublicKey();
   const storagePassword = `${Buffer.from(accountId, 'hex').toString('base64')}!`;
   return {
-    privateStateProvider: levelPrivateStateProvider<typeof BearDEXPrivateStateId>({
+    privateStateProvider: levelPrivateStateProvider<typeof InnermostFXPrivateStateId>({
       privateStateStoreName: contractConfig.privateStateStoreName,
       accountId,
       privateStoragePasswordProvider: () => storagePassword,
@@ -587,92 +585,207 @@ export function setLogger(_logger: Logger): void {
 }
 
 /**
- * Get pool state from contract
+ * Get contract state from InnermostFX contract
  */
-export const getPoolState = async (
-  providers: BearDEXProviders,
-  contract: DeployedBearDEXContract,
+export const getContractState = async (
+  providers: InnermostFXProviders,
+  contract: DeployedInnermostFXContract,
 ): Promise<any> => {
-  const state = await getBearDEXLedgerState(providers, contract.deployTxData.public.contractAddress);
+  const state = await getInnermostFXLedgerState(providers, contract.deployTxData.public.contractAddress);
   return state;
 };
 
 /**
- * Mint USD tokens
+ * Helper to get shielded coin public key from wallet
  */
-export const mintUSD = async (contract: DeployedBearDEXContract, amount: bigint): Promise<void> => {
-  throw new Error('Minting not yet implemented - use shielded tokens from faucet');
+const getShieldedPublicKey = async (wallet: WalletFacade): Promise<string> => {
+  const state = await Rx.firstValueFrom(wallet.state().pipe(Rx.filter((s) => s.isSynced)));
+  return state.shielded.coinPublicKey.toHexString();
 };
 
 /**
- * Mint JPY tokens
+ * Mint USD tokens to shielded address
  */
-export const mintJPY = async (contract: DeployedBearDEXContract, amount: bigint): Promise<void> => {
-  throw new Error('Minting not yet implemented - use shielded tokens from faucet');
-};
-
-/**
- * Initialize pool
- */
-export const initPool = async (
-  contract: DeployedBearDEXContract,
-  usdAmount: bigint,
-  jpyAmount: bigint,
-  lpAmount: bigint,
+export const mintUSD = async (
+  providers: InnermostFXProviders,
+  contract: DeployedInnermostFXContract,
+  amount: bigint,
+  nonce?: Uint8Array,
 ): Promise<void> => {
-  throw new Error('Pool initialization not yet implemented - use contract deployment');
+  const actualNonce = nonce || generateNonce();
+  const recipient = providers.walletProvider.getCoinPublicKey();
+  
+  await withStatus('Minting USD tokens', () =>
+    (contract as any).circuits.mintUSD(
+      amount,
+      { left: { bytes: Buffer.from(recipient, 'hex') } },
+      actualNonce,
+    ),
+  );
+  logger.info(`Minted ${amount.toLocaleString()} USD tokens`);
 };
 
 /**
- * Add liquidity
+ * Mint EUR tokens to shielded address
  */
-export const addLiquidity = async (
-  contract: DeployedBearDEXContract,
-  usdAmount: bigint,
-  jpyAmount: bigint,
-  lpAmount: bigint,
+export const mintEUR = async (
+  providers: InnermostFXProviders,
+  contract: DeployedInnermostFXContract,
+  amount: bigint,
+  nonce?: Uint8Array,
 ): Promise<void> => {
-  throw new Error('Add liquidity not yet implemented');
+  const actualNonce = nonce || generateNonce();
+  const recipient = providers.walletProvider.getCoinPublicKey();
+  
+  await withStatus('Minting EUR tokens', () =>
+    (contract as any).circuits.mintEUR(
+      amount,
+      { left: { bytes: Buffer.from(recipient, 'hex') } },
+      actualNonce,
+    ),
+  );
+  logger.info(`Minted ${amount.toLocaleString()} EUR tokens`);
 };
 
 /**
- * Remove liquidity
+ * Mint JPY tokens to shielded address
  */
-export const removeLiquidity = async (
-  contract: DeployedBearDEXContract,
-  lpAmount: bigint,
-  usdAmount: bigint,
-  jpyAmount: bigint,
+export const mintJPY = async (
+  providers: InnermostFXProviders,
+  contract: DeployedInnermostFXContract,
+  amount: bigint,
+  nonce?: Uint8Array,
 ): Promise<void> => {
-  throw new Error('Remove liquidity not yet implemented');
+  const actualNonce = nonce || generateNonce();
+  const recipient = providers.walletProvider.getCoinPublicKey();
+  
+  await withStatus('Minting JPY tokens', () =>
+    (contract as any).circuits.mintJPY(
+      amount,
+      { left: { bytes: Buffer.from(recipient, 'hex') } },
+      actualNonce,
+    ),
+  );
+  logger.info(`Minted ${amount.toLocaleString()} JPY tokens`);
 };
 
 /**
- * Swap USD to JPY
+ * Create a single order
  */
-export const swapUSDToJPY = async (
-  contract: DeployedBearDEXContract,
-  usdAmount: bigint,
-  jpyAmount: bigint,
+export const createOrder = async (
+  providers: InnermostFXProviders,
+  contract: DeployedInnermostFXContract,
+  pair: Uint8Array,
+  direction: Uint8Array,
+  price: bigint,
+  amount: bigint,
+  nonce?: Uint8Array,
 ): Promise<void> => {
-  throw new Error('Swap not yet implemented');
+  const actualNonce = nonce || generateNonce();
+  
+  await withStatus('Creating order', () =>
+    (contract as any).circuits.createOrder(pair, direction, price, amount, actualNonce),
+  );
+  logger.info(`Order created: pair=${toHex(pair)}, direction=${toHex(direction)}, price=${price}, amount=${amount}`);
 };
 
 /**
- * Swap JPY to USD
+ * Create 2 orders in batch
  */
-export const swapJPYToUSD = async (
-  contract: DeployedBearDEXContract,
-  jpyAmount: bigint,
-  usdAmount: bigint,
+export const createOrderBatch2 = async (
+  providers: InnermostFXProviders,
+  contract: DeployedInnermostFXContract,
+  orders: Array<{
+    pair: Uint8Array;
+    direction: Uint8Array;
+    price: bigint;
+    amount: bigint;
+    nonce: Uint8Array;
+  }>,
 ): Promise<void> => {
-  throw new Error('Swap not yet implemented');
+  await withStatus('Creating batch of 2 orders', () =>
+    (contract as any).circuits.batchCreateOrders2(
+      orders[0].pair, orders[0].direction, orders[0].price, orders[0].amount, orders[0].nonce,
+      orders[1].pair, orders[1].direction, orders[1].price, orders[1].amount, orders[1].nonce,
+    ),
+  );
+  logger.info(`Batch of 2 orders created`);
 };
 
 /**
- * Update oracle price
+ * Create 4 orders in batch
  */
-export const updateOraclePrice = async (contract: DeployedBearDEXContract, price: bigint): Promise<void> => {
-  throw new Error('Oracle update not yet implemented');
+export const createOrderBatch4 = async (
+  providers: InnermostFXProviders,
+  contract: DeployedInnermostFXContract,
+  orders: Array<{
+    pair: Uint8Array;
+    direction: Uint8Array;
+    price: bigint;
+    amount: bigint;
+    nonce: Uint8Array;
+  }>,
+): Promise<void> => {
+  await withStatus('Creating batch of 4 orders', () =>
+    (contract as any).circuits.batchCreateOrders4(
+      orders[0].pair, orders[0].direction, orders[0].price, orders[0].amount, orders[0].nonce,
+      orders[1].pair, orders[1].direction, orders[1].price, orders[1].amount, orders[1].nonce,
+      orders[2].pair, orders[2].direction, orders[2].price, orders[2].amount, orders[2].nonce,
+      orders[3].pair, orders[3].direction, orders[3].price, orders[3].amount, orders[3].nonce,
+    ),
+  );
+  logger.info(`Batch of 4 orders created`);
+};
+
+/**
+ * Cancel an order with refund
+ */
+export const cancelOrder = async (
+  providers: InnermostFXProviders,
+  contract: DeployedInnermostFXContract,
+  orderId: Uint8Array,
+  pair: Uint8Array,
+  direction: Uint8Array,
+  price: bigint,
+  amount: bigint,
+  nonce: Uint8Array,
+  refundNonce: Uint8Array,
+): Promise<void> => {
+  await withStatus('Cancelling order', () =>
+    (contract as any).circuits.cancelOrder(orderId, pair, direction, price, amount, nonce, refundNonce),
+  );
+  logger.info(`Order cancelled: ${toHex(orderId)}`);
+};
+
+/**
+ * Match two orders
+ */
+export const matchOrders = async (
+  providers: InnermostFXProviders,
+  contract: DeployedInnermostFXContract,
+  bidOrderId: Uint8Array,
+  askOrderId: Uint8Array,
+  matchAmount: bigint,
+  bidPair: Uint8Array,
+  bidPrice: bigint,
+  bidAmount: bigint,
+  bidNonce: Uint8Array,
+  askPair: Uint8Array,
+  askPrice: bigint,
+  askAmount: bigint,
+  askNonce: Uint8Array,
+  bidRemainderNonce: Uint8Array,
+  askRemainderNonce: Uint8Array,
+  settlementNonce: Uint8Array,
+): Promise<void> => {
+  await withStatus('Matching orders', () =>
+    (contract as any).circuits.matchOrders(
+      bidOrderId, askOrderId, matchAmount,
+      bidPair, bidPrice, bidAmount, bidNonce,
+      askPair, askPrice, askAmount, askNonce,
+      bidRemainderNonce, askRemainderNonce, settlementNonce,
+    ),
+  );
+  logger.info(`Orders matched: bid=${toHex(bidOrderId)}, ask=${toHex(askOrderId)}, amount=${matchAmount}`);
 };
 

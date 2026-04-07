@@ -1,7 +1,7 @@
   // This file is part of bear-exchange.
   // SPDX-License-Identifier: Apache-2.0
 
-  import { Ledger } from '../../contract/src/managed/beardex/contract/index.js';
+  import { Ledger } from '../../contract/dist/managed/innermost/contract/index.js';
   import { WitnessContext } from '@midnight-ntwrk/compact-runtime';
 
   /**
@@ -23,36 +23,37 @@
   }
 
   /**
-   * Witness functions for BearDEX contract
+   * Witness functions for InnermostFX contract
    * Based on the RWA-API pattern, witnesses provide access to private state
    * during ZK proof generation.
    */
   export const witnesses = {
     /**
-     * Returns the USD reserve balance from private state
-     * Currently returns 0 as reserves are public
+     * Returns the caller's secret key from private state
+     * This is used for bid operations and ownership verification
      */
-    localReserveUSD: (context: WitnessContext<Ledger, BearDEXPrivateState>): 
-        [BearDEXPrivateState, bigint] => {
-      return [context.privateState, 0n];
-    },
-
-    /**
-     * Returns the JPY reserve balance from private state
-     * Currently returns 0 as reserves are public
-     */
-    localReserveJPY: (context: WitnessContext<Ledger, BearDEXPrivateState>): 
-        [BearDEXPrivateState, bigint] => {
-      return [context.privateState, 0n];
-    },
-
-    /**
-     * Returns the dapp's secret key from private state
-     * This is critical for deriving the dapp public key used in contract
-     */
-    localSk: (context: WitnessContext<Ledger, BearDEXPrivateState>): 
-        [BearDEXPrivateState, Uint8Array] => {
+    localSk: (context: WitnessContext<Ledger, InnermostFXPrivateState>): 
+        [InnermostFXPrivateState, Uint8Array] => {
       return [context.privateState, context.privateState.secretKey];
+    },
+
+    /**
+     * Returns the ask party's secret key for order matching
+     * In production, this would come from multi-party proof composition
+     */
+    askSk: (context: WitnessContext<Ledger, InnermostFXPrivateState>): 
+        [InnermostFXPrivateState, Uint8Array] => {
+      return [context.privateState, context.privateState.secretKey];
+    },
+
+    /**
+     * Performs off-chain integer division for quoteCost calculations
+     * Returns floor(numerator / denominator)
+     */
+    witDivide: (context: WitnessContext<Ledger, InnermostFXPrivateState>, numerator: bigint, denominator: bigint): 
+        [InnermostFXPrivateState, bigint] => {
+      const result = numerator / denominator;
+      return [context.privateState, result];
     },
   } as const;
 
@@ -60,6 +61,6 @@
    * Private state contains the dapp's secret key
    * This key is used to derive the public key that's stored in the contract
    */
-  export type BearDEXPrivateState = {
+  export type InnermostFXPrivateState = {
     readonly secretKey: Uint8Array;
   };
