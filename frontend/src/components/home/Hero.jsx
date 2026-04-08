@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import SwapFlowAnimation from './SwapFlowAnimation';
 
 function Hero() {
   return (
@@ -21,48 +22,48 @@ function Hero() {
           <div className="text-left">
             {/* Pre-Headline */}
             <p className="mb-4 text-sm md:text-base lg:text-xl font-medium text-[#3eddfd] font-mono">
-              Private AMM with Shielded Liquidity on Midnight
+              Shielded cross-currency stablecoin swaps on Midnight
             </p>
 
             {/* Main Headline */}
-            <h1 className=" text-4xl lg:text-[56px] font-bold mb-4 leading-tight text-[#f8fafc] tracking-tight">
-              Hidden Liquidity. Proven Execution.
+            <h1 className="text-3xl md:text-4xl lg:text-[56px] font-bold mb-4 leading-tight text-[#f8fafc] tracking-tight">
+              Privacy-First FX Matching with AI Market Making
             </h1>
 
             {/* Subheadline */}
-            <h2 className=" text-base  lg:text-[24px] mb-8   text-[#cbd5e1]  ">
-              Trade and provide liquidity in fully shielded pools. Oracle-referenced pricing with ZK proofs — privacy by default, compliance when needed.
+            <h2 className=" text-sm md:text-base  lg:text-[24px] mb-8   text-[#cbd5e1]  ">
+              AI-powered market makers deliver optimal rates and deep liquidity — slippage-free, front-running-proof atomic execution
             </h2>
             {/* CTA Buttons */}
-            <div className="flex  flex-row gap-4 mb-12">
+            <div className="flex flex-col md:flex-row gap-4 mb-12">
               <Link
-                to="/dashboard"
+                to="/trade"
                 className="px-8 py-4 bg-[#3eddfd] text-[#0f172a] font-semibold rounded-lg transition-all hover:bg-[#2dd4d4] hover:shadow-[0_0_30px_rgba(62,223,223,0.4)] hover:-translate-y-0.5 text-center"
               >
-                Swap Now
+                Start Private Swap
               </Link>
               <Link
-                to="/credentials"
+                to="/market-make"
                 className="px-8 py-4 bg-[#1e293b] text-[#3eddfd] font-semibold rounded-lg transition-all hover:bg-[#334155] hover:shadow-[0_0_20px_rgba(62,223,223,0.2)] border border-[#3eddfd]/30 text-center"
               >
-                Add Liquidity
+                Become a Market Maker 
               </Link>
+            </div>
+
+            {/* Live Network Badge */}
+            <div className="flex items-center gap-3 text-xs md:text-sm text-[#3eddfd]">
+              <img
+                src="https://s2.coinmarketcap.com/static/img/coins/64x64/39064.png"
+                alt="Midnight"
+                className="w-6 h-6 rounded-full"
+              />
+              <span className="font-medium">Live now on Midnight's Preprod network</span>
             </div>
           </div>
 
-          {/* Right Side - Brand Image */}
+          {/* Right Side - Swap Flow Animation */}
           <div className="relative flex items-center justify-center">
-            <div className="relative">
-              {/* Glow effect behind image */}
-              <div className="absolute inset-0 bg-gradient-to-br from-[#3eddfd] to-[#2dd4d4] opacity-20 blur-3xl rounded-full" />
-
-              {/* Brand Image */}
-              <img
-                src="/made-in-bear-brand.png"
-                alt="MadeInBear Brand"
-                className="relative w-full max-w-md h-auto object-contain"
-              />
-            </div>
+            <SwapFlowAnimation />
           </div>
         </div>
       </div>

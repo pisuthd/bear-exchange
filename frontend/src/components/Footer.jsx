@@ -14,10 +14,10 @@ function Footer() {
               className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#3eddfd] to-white bg-clip-text text-transparent mb-4 inline-block hover:opacity-80 transition-opacity"
               style={{ fontFamily: '"Orbitron", sans-serif' }}
             >
-              BearEx
+              Innermost
             </Link>
             <p className="text-[#94a3b8] text-sm leading-relaxed">
-              Private AMM with Shielded Liquidity on Midnight
+              Private FX Matching with AI Market Making on Midnight
             </p>
           </div>
 
@@ -49,9 +49,9 @@ function Footer() {
                   Tokens
                 </Link>
               </li>
-               <li>
+              <li>
                 <Link
-                  to="https://github.com/pisuthd/bear-exchange"
+                  to="https://github.com/pisuthd/innermost"
                   className="text-[#94a3b8] hover:text-[#3eddfd] transition-colors text-sm"
                 >
                   GitHub
@@ -67,14 +67,14 @@ function Footer() {
         {/* Bottom Row: Social Links, Hackathon Badge & Copyright */}
         <div className="flex flex-col md:flex-row justify-between items-center text-center md:text-left gap-4">
           {/* GitHub Link */}
-          <div className="flex items-center gap-4"> 
+          <div className="flex items-center gap-4">
             <p className="text-[#94a3b8] text-sm">
-              Made with ❤️ during INTO The MIDNIGHT Hackathon
+              Made with ❤️ during <a className='text-[#3eddfd] font-semibold' href="https://www.risein.com/programs/into-the-midnight-hackathon">INTO The MIDNIGHT</a>
             </p>
           </div>
           <div className="text-center md:text-right">
             <p className="text-[#94a3b8] text-sm mb-1">
-              © 2026 Bear Exchange
+              © 2026 <a className='text-[#3eddfd] font-semibold' href="https://tamagolabs.com">Tamago Labs Japan</a>
             </p>
           </div>
         </div>

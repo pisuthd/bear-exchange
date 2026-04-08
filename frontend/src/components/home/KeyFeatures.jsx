@@ -2,43 +2,42 @@ import { useState } from 'react';
 
 function KeyFeatures() {
   const [activeTab, setActiveTab] = useState(0);
-
   const features = [
-    {
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-        </svg>
-      ),
-      title: "Zero-Knowledge Proof of Execution",
-      description: "Every swap generates a cryptographic proof that your execution price beats the oracle. Verify P_execution > P_oracle without revealing your trade size or counterparties. Private trades with public guarantees."
-    },
-    {
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      ),
-      title: "Invisible Liquidity Pools",
-      description: "Trade against hidden liquidity that protects your exposure from MEV and front-running. Liquidity providers contribute to shielded pools while maintaining privacy, creating a truly private market for institutional FX."
-    },
-    {
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-        </svg>
-      ),
-      title: "Provable Oracle-Beating Rates",
-      description: "Our matching algorithm guarantees execution at rates better than public oracles. Each trade includes verifiable proof that you received optimal pricing, eliminating the trust gap in decentralized trading."
-    },
     {
       icon: (
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
         </svg>
       ),
-      title: "Private Stablecoin Swaps",
-      description: "Exchange stablecoins (USDT, USDC, DAI) with complete privacy. Your transaction history, holdings, and trading strategies remain shielded on Midnight's data-protecting blockchain—only you control your data."
+      title: "Full Privacy by Default on Midnight",
+      description: "Shielded limit orders with zero-knowledge proofs. Prices, amounts, directions, and fill states never appear on-chain — only opaque commitment hashes. Trade with complete confidentiality while retaining verifiable audit trails."
+    },
+    {
+      icon: (
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+      ),
+      title: "AI-Powered Market Making",
+      description: "Market makers leverage AI agents to intelligently generate and manage order ladders with competitive spreads. Automatically post multiple tiered limit orders in a single transaction around real-time FX rates for optimal liquidity provision."
+    },
+    {
+      icon: (
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332-.477 4.5-1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+        </svg>
+      ),
+      title: "Non-AMM Shielded Orderbook",
+      description: "True limit-order matching without liquidity pools or slippage curves. Traders get precise execution at quoted rates. Market makers control spreads and depth — perfect for cross-currency stablecoin pairs like USD/JPY, USD/EUR, and EUR/JPY."
+    },
+    {
+      icon: (
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+      title: "Institutional-Grade Compliance",
+      description: "Built-in auditability through public trade counters and commitment hashes. Prove regulatory compliance and trade validity on demand via selective disclosure — without ever exposing sensitive order details."
     }
   ];
 

@@ -10,10 +10,9 @@ function Header() {
   const { isConnected, walletAddress, isLoading, connectWallet, disconnectWallet, truncateAddress } = useWallet();
 
   const navItems = [
-    // { label: 'Home', path: '/' },
-    { label: 'Swap', path: '/swap' },
-    { label: 'Tokens', path: '/tokens' },
-    { label: 'Liquidity', path: '/liquidity' }
+    { label: 'Trade', path: '/trade' },
+    { label: 'Market Make', path: '/market-make' },
+    { label: 'Tokens', path: '/tokens' }
   ];
 
   return (
@@ -26,7 +25,7 @@ function Header() {
               className="text-xl md:text-2xl font-bold bg-gradient-to-r from-[#3eddfd] to-white bg-clip-text text-transparent hover:opacity-80 transition-opacity"
               style={{ fontFamily: '"Orbitron", sans-serif' }}
             >
-              BearEx
+              Innermost
             </Link>
 
             <div className="hidden ml-4 md:flex items-center gap-8">
@@ -67,7 +66,7 @@ function Header() {
                 {isMoreOpen && (
                   <div className="absolute top-full left-0 mt-2 bg-[#1e293b] border border-[#334155] rounded-lg shadow-lg overflow-hidden min-w-[150px]">
                     <a
-                      href="https://github.com/pisuthd/bear-exchange"
+                      href="https://github.com/pisuthd/innermost"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="block px-4 py-2 text-sm text-[#cbd5e1] hover:text-[#3eddfd] hover:bg-[#334155] transition-colors"
@@ -82,10 +81,10 @@ function Header() {
 
           <div className="ml-auto flex items-center gap-4">
             {/* Network Status Indicator */}
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-[#1e293b] rounded-lg border border-[#334155]">
+            {/* <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-[#1e293b] rounded-lg border border-[#334155]">
               <span className="w-2 h-2 bg-[#22c55e] rounded-full animate-pulse"></span>
               <span className="text-sm text-[#cbd5e1] font-medium">Network: PreProd</span>
-            </div>
+            </div> */}
 
             {isConnected ? (
               <>
@@ -108,7 +107,7 @@ function Header() {
                 disabled={isLoading}
                 className="px-4 py-2 bg-[#1e293b] text-[#3eddfd] font-semibold rounded-lg border border-[#3eddfd]/30 hover:bg-[#334155] hover:border-[#3eddfd]/50 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isLoading ? 'Connecting...' : 'Connect Wallet'}
+                {isLoading ? 'Connecting...' : 'Connect Lace Wallet'}
               </button>
             )}
           </div>
