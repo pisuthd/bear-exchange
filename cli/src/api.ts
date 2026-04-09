@@ -616,9 +616,13 @@ export const mintUSD = async (
   const recipient = providers.walletProvider.getCoinPublicKey();
   
   await withStatus('Minting USD tokens', () =>
-    (contract as any).circuits.mintUSD(
+    contract.callTx.mintUSD(
       amount,
-      { left: { bytes: Buffer.from(recipient, 'hex') } },
+      {
+        is_left: true,
+        left: { bytes: Buffer.from(recipient, 'hex') },
+        right: { bytes: new Uint8Array(32) },
+      },
       actualNonce,
     ),
   );
@@ -640,7 +644,11 @@ export const mintEUR = async (
   await withStatus('Minting EUR tokens', () =>
     (contract as any).circuits.mintEUR(
       amount,
-      { left: { bytes: Buffer.from(recipient, 'hex') } },
+      {
+        is_left: true,
+        left: { bytes: Buffer.from(recipient, 'hex') },
+        right: { bytes: new Uint8Array(32) },
+      },
       actualNonce,
     ),
   );
@@ -662,7 +670,11 @@ export const mintJPY = async (
   await withStatus('Minting JPY tokens', () =>
     (contract as any).circuits.mintJPY(
       amount,
-      { left: { bytes: Buffer.from(recipient, 'hex') } },
+      {
+        is_left: true,
+        left: { bytes: Buffer.from(recipient, 'hex') },
+        right: { bytes: new Uint8Array(32) },
+      },
       actualNonce,
     ),
   );

@@ -1,7 +1,7 @@
 {
-  "name": "@beardex/cli",
+  "name": "innermost-cli",
   "version": "0.1.0",
-  "description": "CLI for deploying and interacting with BearDEX contracts",
+  "description": "CLI for deploying and interacting with Innermost contracts",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,11 +12,11 @@
   },
   "keywords": [
     "midnight",
-    "beardex",
+    "innermost",
     "dex",
     "cli"
   ],
-  "author": "BearDEX Team",
+  "author": "Pisuth",
   "license": "Apache-2.0",
   "dependencies": {
     "@midnight-ntwrk/ledger-v8": "^8.0.0",
