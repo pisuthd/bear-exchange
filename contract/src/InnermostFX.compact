@@ -11,6 +11,15 @@ pure circuit tokenEUR(): Bytes<32> { return pad(32, "Innermost:EUR"); }
 pure circuit tokenJPY(): Bytes<32> { return pad(32, "Innermost:JPY"); }
 
 // ============================================================================
+// TOKEN COLORS
+// ============================================================================
+
+// Actual coin colors matching wallet's tokenType(domainSep, contractAddress)
+circuit tokenColorUSD(): Bytes<32> { return tokenType(pad(32, "Innermost:USD"), kernel.self()); }
+circuit tokenColorEUR(): Bytes<32> { return tokenType(pad(32, "Innermost:EUR"), kernel.self()); }
+circuit tokenColorJPY(): Bytes<32> { return tokenType(pad(32, "Innermost:JPY"), kernel.self()); }
+
+// ============================================================================
 // ORDER DIRECTION
 // ============================================================================
 
@@ -145,18 +154,19 @@ circuit newTradeId(): Bytes<32> {
 }
 
 
-// Resolve base and quote tokens from a currency pair + direction.
+// Resolve base and quote token COLORS from a currency pair + direction.
 // bid on USD/EUR → lock EUR (quote), receive USD (base)
 // ask on USD/EUR → lock USD (base), receive EUR (quote)
-pure circuit pairTokens(pair: Bytes<32>): Vector<2, Bytes<32>> {
+// Uses tokenColor* circuits to match wallet's actual coin colors
+circuit pairTokens(pair: Bytes<32>): Vector<2, Bytes<32>> {
     if (pair == pairUSDEUR()) {
-        return [tokenUSD(), tokenEUR()];
+        return [tokenColorUSD(), tokenColorEUR()];
     } else {
         if (pair == pairUSDJPY()) {
-            return [tokenUSD(), tokenJPY()];
+            return [tokenColorUSD(), tokenColorJPY()];
         } else {
             // pairEURJPY — base=EUR, quote=JPY
-            return [tokenEUR(), tokenJPY()];
+            return [tokenColorEUR(), tokenColorJPY()];
         }
     }
 }

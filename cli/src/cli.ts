@@ -8,6 +8,7 @@ import type { InnermostFXProviders, DeployedInnermostFXContract } from './common
 import type { Config } from './config';
 import * as api from './api';
 import { generateNonce } from './witnesses';
+import { createHash } from 'crypto';
 
 let logger: Logger;
 
@@ -367,17 +368,18 @@ ${DIVIDER}
   Match Orders
 ${DIVIDER}
   This will match a bid order with an ask order.
+  Enter order numbers (1, 2, 3...) instead of hex IDs.
 ${'─'.repeat(62)}`);
   
   try {
     console.log('\n  Bid Order:');
-    const bidOrderId = await rli.question('    Order ID (hex): ');
+    const bidOrderNum = await rli.question('    Order number (1, 2, 3...): ');
     const bidPairStr = await rli.question('    Currency pair (e.g., USD/EUR): ');
     const bidPrice = await rli.question('    Price (scaled by 1000000): ');
     const bidAmount = await rli.question('    Amount: ');
     
     console.log('\n  Ask Order:');
-    const askOrderId = await rli.question('    Order ID (hex): ');
+    const askOrderNum = await rli.question('    Order number (1, 2, 3...): ');
     const askPairStr = await rli.question('    Currency pair (e.g., USD/EUR): ');
     const askPrice = await rli.question('    Price (scaled by 1000000): ');
     const askAmount = await rli.question('    Amount: ');
@@ -391,10 +393,17 @@ ${'─'.repeat(62)}`);
       'EUR/JPY': pad32('pair:EUR/JPY'),
     };
     
+    // Calculate order IDs from counter numbers
+    const bidOrderId = calculateOrderId(parseInt(bidOrderNum, 10));
+    const askOrderId = calculateOrderId(parseInt(askOrderNum, 10));
+    
+    console.log(`  Bid Order ID:  ${bidOrderId.toString('hex')}`);
+    console.log(`  Ask Order ID:  ${askOrderId.toString('hex')}`);
+    
     await api.matchOrders(
       providers, contract,
-      Buffer.from(bidOrderId, 'hex'),
-      Buffer.from(askOrderId, 'hex'),
+      bidOrderId,
+      askOrderId,
       BigInt(matchAmount),
       pairMap[bidPairStr] || pairMap['USD/EUR'],
       BigInt(bidPrice), BigInt(bidAmount), generateNonce(),
@@ -432,14 +441,21 @@ const viewContractState = async (providers: InnermostFXProviders, contract: Depl
   try {
     const state = await api.getContractState(providers, contract);
     
+    // Convert BigInt values to strings for display
+    const nextOrderId = typeof state.nextOrderId === 'bigint' ? state.nextOrderId.toString() : state.nextOrderId;
+    const nextTradeId = typeof state.nextTradeId === 'bigint' ? state.nextTradeId.toString() : state.nextTradeId;
+    
+    const orderCommitmentCount = state.orderCommitment ? Object.keys(state.orderCommitment).length : 0;
+    const nullifierCount = state.nullifierSet ? Object.keys(state.nullifierSet).length : 0;
+    
     console.log(`
 ${DIVIDER}
   Contract State
 ${DIVIDER}
-  Next Order ID:     ${state.nextOrderId}
-  Next Trade ID:     ${state.nextTradeId}
-  Order Commitments: ${state.orderCommitment ? `${Object.keys(state.orderCommitment).length} orders` : '0 orders'}
-  Nullifier Set:     ${state.nullifierSet ? `${Object.keys(state.nullifierSet).length} nullified orders` : '0 nullified orders'}
+  Next Order ID:     ${nextOrderId}
+  Next Trade ID:     ${nextTradeId}
+  Order Commitments: ${orderCommitmentCount} orders
+  Nullifier Set:     ${nullifierCount} nullified orders
 ${DIVIDER}`);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -502,6 +518,25 @@ function pad32(str: string): Uint8Array {
     bytes[i] = strBytes[i];
   }
   return bytes;
+}
+
+// Calculate order ID from counter number (matches contract's newOrderId circuit)
+// orderId = persistentHash(["orderId:", counter])
+function calculateOrderId(counter: number): Buffer {
+  // pad(32, "orderId:") — UTF-8 bytes, right-padded with zeros to 32 bytes
+  const prefix = Buffer.alloc(32, 0);
+  Buffer.from('orderId:', 'utf8').copy(prefix, 0);
+  
+  // n as Bytes<32>: Uint<64> in big-endian, zero-padded to 32 bytes
+  const counterBytes = Buffer.alloc(32, 0);
+  const counterView = new DataView(counterBytes.buffer);
+  counterView.setBigUint64(24, BigInt(counter), false); // big-endian, last 8 bytes
+  
+  // Combine prefix and counter (64 bytes total)
+  const combined = Buffer.concat([prefix, counterBytes]);
+  
+  // SHA-256 (matches Compact's persistentHash for Vector<2, Bytes<32>>)
+  return Buffer.from(createHash('sha256').update(combined).digest());
 }
 
 // ─── Entry Point ────────────────────────────────────────────────────────────
