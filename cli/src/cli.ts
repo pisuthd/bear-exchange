@@ -47,9 +47,10 @@ ${DIVIDER}
   [4] Create Batch Orders (4)
   [5] Cancel Order
   [6] Match Orders
-  [7] View Contract State
-  [8] Monitor DUST Balance
-  [9] Exit
+  [7] View Token Balances
+  [8] View Contract State
+  [9] Monitor DUST Balance
+  [10] Exit
 ${'─'.repeat(62)}
 > `;
 
@@ -155,7 +156,12 @@ ${'─'.repeat(62)}`);
   }
 };
 
-const mintTokens = async (providers: InnermostFXProviders, contract: DeployedInnermostFXContract, rli: Interface): Promise<void> => {
+const mintTokens = async (
+  providers: InnermostFXProviders,
+  contract: DeployedInnermostFXContract,
+  rli: Interface,
+  wallet: api.WalletContext['wallet'],
+): Promise<void> => {
   console.log(`
 ${DIVIDER}
   Mint Tokens
@@ -164,18 +170,22 @@ ${DIVIDER}`);
   const amount = await rli.question('  Amount to mint: ');
   
   try {
+    const amountBig = BigInt(amount);
+
     if (tokenType.toUpperCase() === 'USD') {
-      await api.mintUSD(providers, contract, BigInt(amount));
+      await api.mintUSD(providers, contract, amountBig, wallet);
       console.log('  ✓ USD tokens minted successfully\n');
     } else if (tokenType.toUpperCase() === 'EUR') {
-      await api.mintEUR(providers, contract, BigInt(amount));
+      await api.mintEUR(providers, contract, amountBig, wallet);
       console.log('  ✓ EUR tokens minted successfully\n');
     } else if (tokenType.toUpperCase() === 'JPY') {
-      await api.mintJPY(providers, contract, BigInt(amount));
+      await api.mintJPY(providers, contract, amountBig, wallet);
       console.log('  ✓ JPY tokens minted successfully\n');
     } else {
       console.log('  ✗ Invalid token type. Use USD, EUR, or JPY.\n');
+      return;
     }
+ 
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.log(`  ✗ Mint failed: ${msg}\n`);
@@ -198,14 +208,14 @@ ${'─'.repeat(62)}`);
     const amount = await rli.question('  Amount: ');
     
     const pairMap: Record<string, Uint8Array> = {
-      'USD/EUR': Buffer.from(pad32('pair:USD/EUR'), 'hex'),
-      'USD/JPY': Buffer.from(pad32('pair:USD/JPY'), 'hex'),
-      'EUR/JPY': Buffer.from(pad32('pair:EUR/JPY'), 'hex'),
+      'USD/EUR': pad32('pair:USD/EUR'),
+      'USD/JPY': pad32('pair:USD/JPY'),
+      'EUR/JPY': pad32('pair:EUR/JPY'),
     };
     
     const dirMap: Record<string, Uint8Array> = {
-      'bid': Buffer.from(pad32('bid'), 'hex'),
-      'ask': Buffer.from(pad32('ask'), 'hex'),
+      'bid': pad32('bid'),
+      'ask': pad32('ask'),
     };
     
     const pair = pairMap[pairStr] || pairMap['USD/EUR'];
@@ -237,14 +247,14 @@ ${'─'.repeat(62)}`);
       const amount = await rli.question('    Amount: ');
       
       const pairMap: Record<string, Uint8Array> = {
-        'USD/EUR': Buffer.from(pad32('pair:USD/EUR'), 'hex'),
-        'USD/JPY': Buffer.from(pad32('pair:USD/JPY'), 'hex'),
-        'EUR/JPY': Buffer.from(pad32('pair:EUR/JPY'), 'hex'),
+        'USD/EUR': pad32('pair:USD/EUR'),
+        'USD/JPY': pad32('pair:USD/JPY'),
+        'EUR/JPY': pad32('pair:EUR/JPY'),
       };
       
       const dirMap: Record<string, Uint8Array> = {
-        'bid': Buffer.from(pad32('bid'), 'hex'),
-        'ask': Buffer.from(pad32('ask'), 'hex'),
+        'bid': pad32('bid'),
+        'ask': pad32('ask'),
       };
       
       orders.push({
@@ -282,14 +292,14 @@ ${'─'.repeat(62)}`);
       const amount = await rli.question('    Amount: ');
       
       const pairMap: Record<string, Uint8Array> = {
-        'USD/EUR': Buffer.from(pad32('pair:USD/EUR'), 'hex'),
-        'USD/JPY': Buffer.from(pad32('pair:USD/JPY'), 'hex'),
-        'EUR/JPY': Buffer.from(pad32('pair:EUR/JPY'), 'hex'),
+        'USD/EUR': pad32('pair:USD/EUR'),
+        'USD/JPY': pad32('pair:USD/JPY'),
+        'EUR/JPY': pad32('pair:EUR/JPY'),
       };
       
       const dirMap: Record<string, Uint8Array> = {
-        'bid': Buffer.from(pad32('bid'), 'hex'),
-        'ask': Buffer.from(pad32('ask'), 'hex'),
+        'bid': pad32('bid'),
+        'ask': pad32('ask'),
       };
       
       orders.push({
@@ -323,14 +333,14 @@ ${DIVIDER}`);
     const amount = await rli.question('  Amount: ');
     
     const pairMap: Record<string, Uint8Array> = {
-      'USD/EUR': Buffer.from(pad32('pair:USD/EUR'), 'hex'),
-      'USD/JPY': Buffer.from(pad32('pair:USD/JPY'), 'hex'),
-      'EUR/JPY': Buffer.from(pad32('pair:EUR/JPY'), 'hex'),
+      'USD/EUR': pad32('pair:USD/EUR'),
+      'USD/JPY': pad32('pair:USD/JPY'),
+      'EUR/JPY': pad32('pair:EUR/JPY'),
     };
     
     const dirMap: Record<string, Uint8Array> = {
-      'bid': Buffer.from(pad32('bid'), 'hex'),
-      'ask': Buffer.from(pad32('ask'), 'hex'),
+      'bid': pad32('bid'),
+      'ask': pad32('ask'),
     };
     
     const pair = pairMap[pairStr] || pairMap['USD/EUR'];
@@ -376,9 +386,9 @@ ${'─'.repeat(62)}`);
     const matchAmount = await rli.question('    Match amount: ');
     
     const pairMap: Record<string, Uint8Array> = {
-      'USD/EUR': Buffer.from(pad32('pair:USD/EUR'), 'hex'),
-      'USD/JPY': Buffer.from(pad32('pair:USD/JPY'), 'hex'),
-      'EUR/JPY': Buffer.from(pad32('pair:EUR/JPY'), 'hex'),
+      'USD/EUR': pad32('pair:USD/EUR'),
+      'USD/JPY': pad32('pair:USD/JPY'),
+      'EUR/JPY': pad32('pair:EUR/JPY'),
     };
     
     await api.matchOrders(
@@ -396,6 +406,25 @@ ${'─'.repeat(62)}`);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.log(`  ✗ Order matching failed: ${msg}\n`);
+  }
+};
+
+const viewTokenBalances = async (wallet: api.WalletContext['wallet']): Promise<void> => {
+  try {
+    console.log(`
+${DIVIDER}
+  Shielded Token Balances
+${DIVIDER}`);
+    await api.withStatus('Fetching token balances', async () => {
+      const balances = await api.getShieldedTokenBalances(wallet);
+      console.log(`  USD: ${balances.USD.toLocaleString()}`);
+      console.log(`  EUR: ${balances.EUR.toLocaleString()}`);
+      console.log(`  JPY: ${balances.JPY.toLocaleString()}`);
+      console.log(`${DIVIDER}\n`);
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.log(`  ✗ Failed to fetch token balances: ${msg}\n`);
   }
 };
 
@@ -431,7 +460,7 @@ const mainLoop = async (providers: InnermostFXProviders, walletCtx: api.WalletCo
     const choice = await rli.question(CONTRACT_MENU(dustLabel));
     switch (choice.trim()) {
       case '1':
-        await mintTokens(providers, contract, rli);
+        await mintTokens(providers, contract, rli, walletCtx.wallet);
         break;
       case '2':
         await createSingleOrder(providers, contract, rli);
@@ -449,12 +478,15 @@ const mainLoop = async (providers: InnermostFXProviders, walletCtx: api.WalletCo
         await matchOrders(providers, contract, rli);
         break;
       case '7':
-        await viewContractState(providers, contract);
+        await viewTokenBalances(walletCtx.wallet);
         break;
       case '8':
-        await startDustMonitor(walletCtx.wallet, rli);
+        await viewContractState(providers, contract);
         break;
       case '9':
+        await startDustMonitor(walletCtx.wallet, rli);
+        break;
+      case '10':
         return;
       default:
         console.log(`  Invalid choice: ${choice}`);
@@ -462,9 +494,14 @@ const mainLoop = async (providers: InnermostFXProviders, walletCtx: api.WalletCo
   }
 };
 
-// Helper function to pad strings to 32 bytes
-function pad32(str: string): string {
-  return str.padEnd(32, '\0').substring(0, 32);
+// Helper function to pad strings to 32 bytes as Uint8Array
+function pad32(str: string): Uint8Array {
+  const bytes = new Uint8Array(32);
+  const strBytes = new TextEncoder().encode(str);
+  for (let i = 0; i < Math.min(strBytes.length, 32); i++) {
+    bytes[i] = strBytes[i];
+  }
+  return bytes;
 }
 
 // ─── Entry Point ────────────────────────────────────────────────────────────

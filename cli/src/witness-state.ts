@@ -50,7 +50,7 @@ export function saveWitnessState(state: WitnessState): void {
 
     const data = JSON.stringify({
       contractAddress: state.contractAddress,
-      secretKey: state.secretKey,
+      secretKey: state.secretKey
     }, null, 2);
 
     fs.writeFileSync(WITNESS_STATE_FILE, data, 'utf-8');

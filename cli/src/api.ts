@@ -596,11 +596,175 @@ export const getContractState = async (
 };
 
 /**
+ * Helper function to pad strings to 32 bytes as Uint8Array
+ * This must match to contract's pad() function exactly
+ */
+function pad32(str: string): Uint8Array {
+  const bytes = new Uint8Array(32);
+  const strBytes = new TextEncoder().encode(str);
+  for (let i = 0; i < Math.min(strBytes.length, 32); i++) {
+    bytes[i] = strBytes[i];
+  }
+  return bytes;
+}
+
+/**
+ * Hardcoded token color mappings for InnermostFX
+ * These are the actual token colors stored in the wallet after minting
+ * The contract uses tokenType(pad32("Innermost:USD"), contractAddress) internally
+ * which produces these consistent hashed values
+ */
+// const TOKEN_COLORS = {
+//   USD: 'a0fb965cd124a4cd1b320b9e78a4a61b8736443bd8e97157a6417503dcfd5445',
+//   JPY: '4ec04ebf44231ffeb867eaca9885976ce5423d77f74ccb8871254da1d36a3e12',
+//   EUR: 'bc3297bb5837c9b28dc865aa2ad5f432c70d8371ed0991f40b18044e5ca13e1a',
+// } as const;
+
+const TOKEN_COLORS = {
+  USD: '8b79e032554d889b6b7d2316b7aa446b8f0ba9c3bdaeb2e0e04a2e770fafa510',
+  JPY: '382846b217a6e543a4a8c4178cf08f12102f45611635a55b2a5f26e33085295a',
+  EUR: 'c80e369586efea0542361a6216bbfa176bbf161482acf073b6bca41e5094adbf',
+} as const;
+
+/**
  * Helper to get shielded coin public key from wallet
  */
 const getShieldedPublicKey = async (wallet: WalletFacade): Promise<string> => {
   const state = await Rx.firstValueFrom(wallet.state().pipe(Rx.filter((s) => s.isSynced)));
   return state.shielded.coinPublicKey.toHexString();
+};
+
+/**
+ * Get shielded token balances for USD, EUR, JPY
+ */
+export const getShieldedTokenBalances = async (
+  wallet: WalletFacade,
+): Promise<{ USD: bigint; EUR: bigint; JPY: bigint }> => {
+  const state = await Rx.firstValueFrom(wallet.state().pipe(Rx.filter((s) => s.isSynced)));
+  const balances: any = state.shielded.balances;
+  
+  console.log(`\n  [INFO] Getting token balances from wallet...`);
+  
+  // Get token colors directly from wallet balances
+  const balanceKeys = Object.keys(balances);
+  const nightColor = unshieldedToken().raw as string;
+  
+  // Filter out NIGHT and keep only token balances
+  const tokenKeys = balanceKeys.filter(key => key !== nightColor && balances[key] > 0n);
+  
+  console.log(`    Available token colors in wallet:`, tokenKeys);
+  
+  // let tokenUSD: string;
+  // let tokenEUR: string;
+  // let tokenJPY: string;
+  
+  // if (tokenKeys.length >= 3) {
+  //   // Auto-map the first 3 tokens to USD, EUR, JPY
+  //   tokenUSD = TOKEN_COLORS.USD
+  //   tokenEUR = TOKEN_COLORS.EUR
+  //   tokenJPY = TOKEN_COLORS.JPY
+    
+  //   console.log(`    Using wallet token colors:`);
+  //   console.log(`      USD: ${tokenUSD}`);
+  //   console.log(`      EUR: ${tokenEUR}`);
+  //   console.log(`      JPY: ${tokenJPY}`);
+  // } else {
+  //   // Fallback to computed token colors (for new wallets with no tokens)
+  //   tokenUSD = toHex(pad32('Innermost:USD'));
+  //   tokenEUR = toHex(pad32('Innermost:EUR'));
+  //   tokenJPY = toHex(pad32('Innermost:JPY'));
+    
+  //   console.log(`    ⚠ No tokens detected, using computed values (will be updated after minting)`);
+  //   console.log(`      USD: ${tokenUSD}`);
+  //   console.log(`      EUR: ${tokenEUR}`);
+  //   console.log(`      JPY: ${tokenJPY}`);
+  // }
+  
+  const balanceUSD = (balances[TOKEN_COLORS.USD] as bigint) ?? 0n;
+  const balanceEUR = (balances[TOKEN_COLORS.EUR] as bigint) ?? 0n;
+  const balanceJPY = (balances[TOKEN_COLORS.JPY] as bigint) ?? 0n;
+  
+  console.log(`    ✓ Balance USD: ${balanceUSD}`);
+  console.log(`    ✓ Balance EUR: ${balanceEUR}`);
+  console.log(`    ✓ Balance JPY: ${balanceJPY}`);
+  
+  return {
+    USD: balanceUSD,
+    EUR: balanceEUR,
+    JPY: balanceJPY,
+  };
+};
+
+/**
+ * Wait until the wallet has at least the minimum specified amount of a token
+ * Uses reactive pattern to avoid polling issues
+ */
+export const waitForShieldedTokens = async (
+  wallet: WalletFacade,
+  tokenColor: Uint8Array,
+  minAmount: bigint,
+  timeoutMs: number = 60000,
+): Promise<void> => {
+  const tokenColorHex = toHex(tokenColor);
+  
+  console.log(`\n  [DEBUG] Waiting for tokens:`);
+  console.log(`    Token color hex: ${tokenColorHex}`);
+  console.log(`    Token color length: ${tokenColorHex.length} characters`);
+  console.log(`    Required amount: ${minAmount}`);
+  
+  try {
+    await Rx.firstValueFrom(
+      wallet.state().pipe(
+        Rx.throttleTime(2_000),
+        Rx.filter((s) => s.isSynced),
+        Rx.tap((s) => {
+          // Log actual balance keys and our computed balance each time we check
+          const balances: any = s.shielded.balances;
+          const balance = (balances[tokenColorHex] as bigint) ?? 0n;
+          console.log(`    Current balance: ${balance}`);
+          console.log(`    Available balance keys in wallet:`, Object.keys(balances));
+        }),
+        Rx.filter((s) => {
+          const balances: any = s.shielded.balances;
+          const balance = (balances[tokenColorHex] as bigint) ?? 0n;
+          return balance >= minAmount;
+        }),
+        Rx.timeout({
+          each: timeoutMs,
+          with: () => {
+            console.log(`\n  [DEBUG] Timeout reached!`);
+            console.log(`    Token color we're looking for: ${tokenColorHex}`);
+            Rx.firstValueFrom(
+              wallet.state().pipe(
+                Rx.filter((s) => s.isSynced),
+                Rx.take(1)
+              )
+            ).then((s) => {
+              const balances: any = s.shielded.balances;
+              console.log(`    Actual balance keys in wallet:`, Object.keys(balances));
+              console.log(`    Balances:`, balances);
+            });
+            return Rx.throwError(() => new Error(`Timeout waiting for shielded tokens. Required: ${minAmount}, Got insufficient amount`));
+          },
+        }),
+      ),
+    );
+  } catch (error) {
+    console.log(`\n  [DEBUG] Final check before error:`);
+    Rx.firstValueFrom(
+      wallet.state().pipe(
+        Rx.filter((s) => s.isSynced),
+        Rx.take(1)
+      )
+    ).then((s) => {
+      const balances: any = s.shielded.balances;
+      console.log(`    Token color we're looking for: ${tokenColorHex}`);
+      console.log(`    Does key exist in balances? ${tokenColorHex in balances}`);
+      console.log(`    Balance value: ${balances[tokenColorHex]}`);
+      console.log(`    All balance keys:`, Object.keys(balances));
+    }).catch(() => {});
+    throw error;
+  }
 };
 
 /**
@@ -610,6 +774,7 @@ export const mintUSD = async (
   providers: InnermostFXProviders,
   contract: DeployedInnermostFXContract,
   amount: bigint,
+  wallet: WalletFacade,
   nonce?: Uint8Array,
 ): Promise<void> => {
   const actualNonce = nonce || generateNonce();
@@ -636,13 +801,14 @@ export const mintEUR = async (
   providers: InnermostFXProviders,
   contract: DeployedInnermostFXContract,
   amount: bigint,
+  wallet: WalletFacade,
   nonce?: Uint8Array,
 ): Promise<void> => {
   const actualNonce = nonce || generateNonce();
   const recipient = providers.walletProvider.getCoinPublicKey();
   
   await withStatus('Minting EUR tokens', () =>
-    (contract as any).circuits.mintEUR(
+    contract.callTx.mintEUR(
       amount,
       {
         is_left: true,
@@ -662,13 +828,14 @@ export const mintJPY = async (
   providers: InnermostFXProviders,
   contract: DeployedInnermostFXContract,
   amount: bigint,
+  wallet: WalletFacade,
   nonce?: Uint8Array,
 ): Promise<void> => {
   const actualNonce = nonce || generateNonce();
   const recipient = providers.walletProvider.getCoinPublicKey();
   
   await withStatus('Minting JPY tokens', () =>
-    (contract as any).circuits.mintJPY(
+    contract.callTx.mintJPY(
       amount,
       {
         is_left: true,
@@ -696,7 +863,7 @@ export const createOrder = async (
   const actualNonce = nonce || generateNonce();
   
   await withStatus('Creating order', () =>
-    (contract as any).circuits.createOrder(pair, direction, price, amount, actualNonce),
+    contract.callTx.createOrder(pair, direction, price, amount, actualNonce),
   );
   logger.info(`Order created: pair=${toHex(pair)}, direction=${toHex(direction)}, price=${price}, amount=${amount}`);
 };
@@ -716,7 +883,7 @@ export const createOrderBatch2 = async (
   }>,
 ): Promise<void> => {
   await withStatus('Creating batch of 2 orders', () =>
-    (contract as any).circuits.batchCreateOrders2(
+    contract.callTx.batchCreateOrders2(
       orders[0].pair, orders[0].direction, orders[0].price, orders[0].amount, orders[0].nonce,
       orders[1].pair, orders[1].direction, orders[1].price, orders[1].amount, orders[1].nonce,
     ),
@@ -739,7 +906,7 @@ export const createOrderBatch4 = async (
   }>,
 ): Promise<void> => {
   await withStatus('Creating batch of 4 orders', () =>
-    (contract as any).circuits.batchCreateOrders4(
+    contract.callTx.batchCreateOrders4(
       orders[0].pair, orders[0].direction, orders[0].price, orders[0].amount, orders[0].nonce,
       orders[1].pair, orders[1].direction, orders[1].price, orders[1].amount, orders[1].nonce,
       orders[2].pair, orders[2].direction, orders[2].price, orders[2].amount, orders[2].nonce,
@@ -764,7 +931,7 @@ export const cancelOrder = async (
   refundNonce: Uint8Array,
 ): Promise<void> => {
   await withStatus('Cancelling order', () =>
-    (contract as any).circuits.cancelOrder(orderId, pair, direction, price, amount, nonce, refundNonce),
+    contract.callTx.cancelOrder(orderId, pair, direction, price, amount, nonce, refundNonce),
   );
   logger.info(`Order cancelled: ${toHex(orderId)}`);
 };
@@ -791,7 +958,7 @@ export const matchOrders = async (
   settlementNonce: Uint8Array,
 ): Promise<void> => {
   await withStatus('Matching orders', () =>
-    (contract as any).circuits.matchOrders(
+    contract.callTx.matchOrders(
       bidOrderId, askOrderId, matchAmount,
       bidPair, bidPrice, bidAmount, bidNonce,
       askPair, askPrice, askAmount, askNonce,
@@ -800,4 +967,3 @@ export const matchOrders = async (
   );
   logger.info(`Orders matched: bid=${toHex(bidOrderId)}, ask=${toHex(askOrderId)}, amount=${matchAmount}`);
 };
-
