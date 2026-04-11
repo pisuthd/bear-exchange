@@ -1,97 +1,97 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuites name="vitest tests" tests="46" failures="0" errors="0" time="0.022249398">
-    <testsuite name="src/test/innermostfx.test.ts" timestamp="2026-04-07T12:50:13.938Z" hostname="ohmz" tests="46" failures="0" errors="0" skipped="0" time="0.022249398">
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Initialization &gt; initializes with correct order ID counter" time="0.002976457">
+<testsuites name="vitest tests" tests="46" failures="0" errors="0" time="0.02310759">
+    <testsuite name="src/test/innermostfx.test.ts" timestamp="2026-04-10T01:49:06.866Z" hostname="ohmz" tests="46" failures="0" errors="0" skipped="0" time="0.02310759">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Initialization &gt; initializes with correct order ID counter" time="0.002736784">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Initialization &gt; initializes with correct trade ID counter" time="0.000316926">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Initialization &gt; initializes with correct trade ID counter" time="0.000283337">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Initialization &gt; initializes with empty order commitments" time="0.000220532">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Initialization &gt; initializes with empty order commitments" time="0.000222542">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Initialization &gt; initializes with empty nullifier set" time="0.000262112">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Initialization &gt; initializes with empty nullifier set" time="0.000241888">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Token Minting &gt; mints USD tokens successfully" time="0.000300735">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Token Minting &gt; mints USD tokens successfully" time="0.00029034">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Token Minting &gt; mints EUR tokens successfully" time="0.000221223">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Token Minting &gt; mints EUR tokens successfully" time="0.000213505">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Token Minting &gt; mints JPY tokens successfully" time="0.000283813">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Token Minting &gt; mints JPY tokens successfully" time="0.000270552">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Token Minting &gt; rejects minting zero tokens" time="0.0010973">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Token Minting &gt; rejects minting zero tokens" time="0.001043176">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Token Minting &gt; tracks multiple user balances separately" time="0.000818637">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Token Minting &gt; tracks multiple user balances separately" time="0.000715555">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; creates a bid order successfully" time="0.000667258">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; creates a bid order successfully" time="0.00064374">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; creates an ask order successfully" time="0.000365309">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; creates an ask order successfully" time="0.000377465">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; locks correct amount for bid orders" time="0.000181227">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; locks correct amount for bid orders" time="0.000208876">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; locks correct amount for ask orders" time="0.000166058">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; locks correct amount for ask orders" time="0.00015844">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; rejects order with zero price" time="0.000279665">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; rejects order with zero price" time="0.000264491">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; rejects order with zero amount" time="0.000237214">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; rejects order with zero amount" time="0.000225848">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; rejects invalid direction" time="0.000241713">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; rejects invalid direction" time="0.000229696">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; rejects unsupported currency pair" time="0.000245079">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; rejects unsupported currency pair" time="0.000223152">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; creates batch of 2 orders successfully" time="0.000311676">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; creates batch of 2 orders successfully" time="0.000274089">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; creates batch of 4 orders successfully" time="0.000465572">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Creation &gt; creates batch of 4 orders successfully" time="0.000512451">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Cancellation &gt; cancels a bid order successfully" time="0.000290035">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Cancellation &gt; cancels a bid order successfully" time="0.000424173">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Cancellation &gt; cancels an ask order successfully" time="0.00018775">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Cancellation &gt; cancels an ask order successfully" time="0.000230436">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Cancellation &gt; rejects cancelling non-existent order" time="0.000229299">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Cancellation &gt; rejects cancelling non-existent order" time="0.000376082">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Cancellation &gt; rejects cancelling already consumed order" time="0.000245029">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Cancellation &gt; rejects cancelling already consumed order" time="0.000317491">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Cancellation &gt; rejects cancelling another user&apos;s order" time="0.00024001">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Cancellation &gt; rejects cancelling another user&apos;s order" time="0.000310638">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Matching &gt; matches orders successfully - full fill" time="0.000589318">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Matching &gt; matches orders successfully - full fill" time="0.000920213">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Matching &gt; rejects matching orders that don&apos;t cross" time="0.000403041">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Matching &gt; rejects matching orders that don&apos;t cross" time="0.000568627">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Matching &gt; rejects matching orders from different pairs" time="0.000295355">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Matching &gt; rejects matching orders from different pairs" time="0.000382224">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Matching &gt; rejects match amount of zero" time="0.000260909">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Matching &gt; rejects match amount of zero" time="0.000293496">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Matching &gt; rejects match amount exceeding bid" time="0.00024537">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Matching &gt; rejects match amount exceeding bid" time="0.000260654">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Matching &gt; rejects match amount exceeding ask" time="0.000259947">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Order Matching &gt; rejects match amount exceeding ask" time="0.000310688">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Partial Fills &gt; handles partial fill on bid order" time="0.000309793">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Partial Fills &gt; handles partial fill on bid order" time="0.000366194">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Partial Fills &gt; handles partial fill on ask order" time="0.000257613">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Partial Fills &gt; handles partial fill on ask order" time="0.000239865">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Partial Fills &gt; handles partial fill on both orders" time="0.000288973">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Partial Fills &gt; handles partial fill on both orders" time="0.000266435">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Price Improvement &gt; refunds overbid amount to bidder" time="0.000181617">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Price Improvement &gt; refunds overbid amount to bidder" time="0.000191934">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Price Improvement &gt; no overbid when prices are equal" time="0.000169695">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Price Improvement &gt; no overbid when prices are equal" time="0.000169471">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Currency Pairs &gt; handles orders on USD/JPY pair" time="0.000230851">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Currency Pairs &gt; handles orders on USD/JPY pair" time="0.000232671">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Currency Pairs &gt; handles orders on EUR/JPY pair" time="0.000241993">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Currency Pairs &gt; handles orders on EUR/JPY pair" time="0.000225347">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Trade Recording &gt; records trade successfully" time="0.000391389">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Trade Recording &gt; records trade successfully" time="0.000375201">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Trade Recording &gt; increments trade ID after each trade" time="0.000398793">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Trade Recording &gt; increments trade ID after each trade" time="0.000415547">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Real-World Use Cases &gt; market maker posts ladder via batchCreateOrders4 - USD/JPY" time="0.000310164">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Real-World Use Cases &gt; market maker posts ladder via batchCreateOrders4 - USD/JPY" time="0.000337309">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Real-World Use Cases &gt; trader fills 150k USD across multiple ask orders - blended rate" time="0.000406809">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Real-World Use Cases &gt; trader fills 150k USD across multiple ask orders - blended rate" time="0.000452207">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Real-World Use Cases &gt; large volume trading with multiple partial fills" time="0.000395357">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Real-World Use Cases &gt; large volume trading with multiple partial fills" time="0.000410267">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Real-World Use Cases &gt; market maker adjusts ladder after partial fills" time="0.000594448">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Real-World Use Cases &gt; market maker adjusts ladder after partial fills" time="0.000588164">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Real-World Use Cases &gt; price improvement across multiple orders" time="0.000312017">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Real-World Use Cases &gt; price improvement across multiple orders" time="0.00032219">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Real-World Use Cases &gt; concurrent market makers with competing ladders" time="0.000636789">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Real-World Use Cases &gt; concurrent market makers with competing ladders" time="0.000627919">
         </testcase>
-        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Real-World Use Cases &gt; slippage-free execution with perfect price discovery" time="0.00037047">
+        <testcase classname="src/test/innermostfx.test.ts" name="InnermostFX smart contract &gt; Real-World Use Cases &gt; slippage-free execution with perfect price discovery" time="0.000405979">
         </testcase>
     </testsuite>
 </testsuites>

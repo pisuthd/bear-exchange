@@ -19,7 +19,7 @@
   "author": "Pisuth",
   "license": "Apache-2.0",
   "dependencies": {
-    "@midnight-ntwrk/ledger-v8": "^8.0.0",
+    "@midnight-ntwrk/ledger-v8": "^8.0.3",
     "@midnight-ntwrk/midnight-js": "^4.0.4",
     "@midnight-ntwrk/midnight-js-http-client-proof-provider": "^4.0.4",
     "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "^4.0.4",
