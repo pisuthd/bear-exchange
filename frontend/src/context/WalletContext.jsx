@@ -49,6 +49,7 @@ export const WalletProvider = ({ children }) => {
       // Connect to the specified network (use 'preprod' for PreProd network)
       const connectedApi = await wallet.connect('preprod');
 
+
       // Retrieve all wallet information
       const addressesAndBalances = {
         shieldedBalances: await connectedApi.getShieldedBalances(),
