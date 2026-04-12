@@ -124,9 +124,9 @@ cd frontend && npm run dev
 
 ## Deployment (Midnight Preprod)
 
-| Contract | Address |
-|----------|---------|
-| InnermostFX | `75ae07cea19e9bbb34a6e8599174f6504744c67dbf49872c79a07a150a6eb316` |
+| Contract     | Address |
+|--------------|---------|
+| InnermostFX  | [`75ae07cea19e9bbb34a6e8599174f6504744c67dbf49872c79a07a150a6eb316`](https://preprod.nightforge.jp/address/75ae07cea19e9bbb34a6e8599174f6504744c67dbf49872c79a07a150a6eb316) |
 
 ## Technology Stack
 
