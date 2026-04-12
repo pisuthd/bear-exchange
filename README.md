@@ -4,6 +4,10 @@ InnermostFX solves a core gap in both DeFi and TradFi: professional traders need
 
 At the core is AI-powered market making. AI agents generate and manage dynamic order ladders using real-time FX signals, enabling deep liquidity without exposing strategies. Trades are executed via user-driven atomic matching with built-in price improvement, while partial fills automatically create remainder orders — preserving precision, capital efficiency, and privacy. The result is a system that combines confidential execution with verifiable settlement, aligned with Midnight's vision for shielded FX infrastructure.
 
+
+<img width="1445" height="846" alt="Screenshot from 2026-04-12 10-52-36" src="https://github.com/user-attachments/assets/1af812dc-87c4-48c5-a2a5-489e2c5e5d68" />
+
+
 ## Key Features
 
 - **Live on Midnight Preprod** — contract deployed and callable on preprod with real shielded transactions
@@ -49,7 +53,7 @@ innermost/
 
 ## Smart Contract
 
-The core contract is written in **Compact v0.20+** (~500 LOC) and implements a shielded CLOB with these circuits:
+The core contract is written in **Compact v0.20+** with these circuits:
 
 - **`createOrder` / `batchCreateOrders2` / `batchCreateOrders4`** — post single or multi-level orders with shielded price, amount, and direction
 - **`cancelOrder`** — cancel and refund locked tokens with ownership proof
