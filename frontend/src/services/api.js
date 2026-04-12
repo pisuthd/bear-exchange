@@ -105,6 +105,23 @@ export async function cancelOrder(orderId) {
 }
 
 /**
+ * Create multiple orders in batch (2 or 4 orders)
+ * @param {Array<{pair: string, direction: string, contractPrice: string, contractAmount: string}>} orders
+ */
+export async function createOrderBatch(orders) {
+  const res = await fetch(`${API_URL}/api/orders/batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orders }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Batch create failed' }));
+    throw new Error(err.error || 'Failed to create batch orders');
+  }
+  return res.json();
+}
+
+/**
  * Match two orders
  */
 export async function matchOrders(bidOrderId, askOrderId, matchAmount) {

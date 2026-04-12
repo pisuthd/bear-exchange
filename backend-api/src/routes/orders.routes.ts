@@ -59,6 +59,65 @@ router.post('/', async (req, res) => {
 });
 
 /**
+ * POST /api/orders/batch
+ * Create multiple orders in a single batch (2 or 4 orders)
+ */
+router.post('/batch', async (req, res) => {
+  try {
+    const { orders } = req.body;
+
+    if (!Array.isArray(orders) || (orders.length !== 2 && orders.length !== 4)) {
+      return res.status(400).json({
+        success: false,
+        error: 'orders must be an array of exactly 2 or 4 order objects',
+      });
+    }
+
+    for (const order of orders) {
+      if (!order.pair || !order.direction || !order.price || !order.amount) {
+        return res.status(400).json({
+          success: false,
+          error: 'Each order must have: pair, direction, price, amount',
+        });
+      }
+      if (!['bid', 'ask'].includes(order.direction)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Direction must be either "bid" or "ask"',
+        });
+      }
+    }
+
+    const orderParams = orders.map((o: any) => ({
+      pair: o.pair,
+      direction: o.direction,
+      price: BigInt(o.price),
+      amount: BigInt(o.amount),
+    }));
+
+    const results = await contractService.createOrderBatch(orderParams);
+
+    const allSuccess = results.every((r) => r.onChainSuccess);
+
+    res.json({
+      success: true,
+      message: allSuccess
+        ? `Batch of ${results.length} orders created successfully`
+        : 'Batch saved to database but on-chain creation may have failed',
+      data: results.map((r) => ({ orderId: r.orderId })),
+      onChainSuccess: allSuccess,
+      error: results.find((r) => r.error)?.error,
+    });
+  } catch (error: any) {
+    console.error('Error creating batch orders:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to create batch orders',
+    });
+  }
+});
+
+/**
  * GET /api/orders
  * Get all orders
  */

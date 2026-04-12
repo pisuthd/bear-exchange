@@ -472,6 +472,42 @@ export const createOrder = async (
   await contract.callTx.createOrder(pair, direction, price, amount, actualNonce);
 };
 
+export const createOrderBatch2 = async (
+  providers: InnermostFXProviders,
+  contract: DeployedInnermostFXContract,
+  orders: Array<{
+    pair: Uint8Array;
+    direction: Uint8Array;
+    price: bigint;
+    amount: bigint;
+    nonce: Uint8Array;
+  }>,
+): Promise<void> => {
+  await contract.callTx.batchCreateOrders2(
+    orders[0].pair, orders[0].direction, orders[0].price, orders[0].amount, orders[0].nonce,
+    orders[1].pair, orders[1].direction, orders[1].price, orders[1].amount, orders[1].nonce,
+  );
+};
+
+export const createOrderBatch4 = async (
+  providers: InnermostFXProviders,
+  contract: DeployedInnermostFXContract,
+  orders: Array<{
+    pair: Uint8Array;
+    direction: Uint8Array;
+    price: bigint;
+    amount: bigint;
+    nonce: Uint8Array;
+  }>,
+): Promise<void> => {
+  await contract.callTx.batchCreateOrders4(
+    orders[0].pair, orders[0].direction, orders[0].price, orders[0].amount, orders[0].nonce,
+    orders[1].pair, orders[1].direction, orders[1].price, orders[1].amount, orders[1].nonce,
+    orders[2].pair, orders[2].direction, orders[2].price, orders[2].amount, orders[2].nonce,
+    orders[3].pair, orders[3].direction, orders[3].price, orders[3].amount, orders[3].nonce,
+  );
+};
+
 export const cancelOrder = async (
   providers: InnermostFXProviders,
   contract: DeployedInnermostFXContract,

@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { useWallet } from '../context/WalletContext';
-import { checkHealth, getOrders, createOrder, cancelOrder } from '../services/api';
+import { checkHealth, getOrders, createOrderBatch, cancelOrder } from '../services/api';
 import { getCurrentPrices, formatPrice } from '../services/fx-prices';
-import { generateLadder, chatResponse } from '../services/mock-ai';
+import { generateLadder } from '../services/mock-ai';
 
 const PAIRS = ['USD/EUR', 'USD/JPY', 'EUR/JPY'];
 const RISK_LEVELS = ['conservative', 'moderate', 'aggressive'];
@@ -17,7 +17,7 @@ function MarketMake() {
   // Config
   const [selectedPair, setSelectedPair] = useState('USD/EUR');
   const [riskLevel, setRiskLevel] = useState('moderate');
-  const [levels, setLevels] = useState(5);
+  const [levels, setLevels] = useState(1);
   const [totalAmount, setTotalAmount] = useState(10000);
 
   // Prices
@@ -33,13 +33,6 @@ function MarketMake() {
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [cancelling, setCancelling] = useState(null);
-
-  // Chat
-  const [chatMessages, setChatMessages] = useState([
-    { role: 'assistant', content: "👋 I'm your AI market making assistant. Configure your parameters and hit **Generate Ladder** to get started, or ask me anything about market making strategy!" }
-  ]);
-  const [chatInput, setChatInput] = useState('');
-  const [chatLoading, setChatLoading] = useState(false);
 
   // Price ticker
   useEffect(() => {
@@ -111,23 +104,35 @@ function MarketMake() {
     }
   };
 
-  // Deploy all orders
+  // Deploy all orders (using batch API for 2 or 4 orders)
   const handleDeployAll = async () => {
     if (!aiResult?.orders?.length) return;
     setDeploying(true);
     setDeployResults([]);
-    const results = [];
 
-    for (const order of aiResult.orders) {
-      try {
-        const res = await createOrder(order.pair, order.direction, order.contractPrice, order.contractAmount);
-        results.push({ ...order, success: res.success, orderId: res.data?.orderId, error: res.error });
-      } catch (err) {
-        results.push({ ...order, success: false, error: err.message });
-      }
+    try {
+      const batchOrders = aiResult.orders.map((order) => ({
+        pair: order.pair,
+        direction: order.direction,
+        price: order.contractPrice,
+        amount: order.contractAmount,
+      }));
+
+      const res = await createOrderBatch(batchOrders);
+      const results = aiResult.orders.map((order, i) => ({
+        ...order,
+        success: res.success,
+        orderId: res.data?.[i]?.orderId,
+        error: res.error,
+      }));
+
+      setDeployResults(results);
+    } catch (err) {
+      setDeployResults(
+        aiResult.orders.map((order) => ({ ...order, success: false, error: err.message }))
+      );
     }
 
-    setDeployResults(results);
     setDeploying(false);
     await fetchOrders();
   };
@@ -142,24 +147,6 @@ function MarketMake() {
       console.error('Cancel failed:', err);
     } finally {
       setCancelling(null);
-    }
-  };
-
-  // Chat submit
-  const handleChatSubmit = async (e) => {
-    e.preventDefault();
-    if (!chatInput.trim()) return;
-    const userMsg = chatInput.trim();
-    setChatMessages((prev) => [...prev, { role: 'user', content: userMsg }]);
-    setChatInput('');
-    setChatLoading(true);
-    try {
-      const reply = await chatResponse(userMsg);
-      setChatMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-    } catch {
-      setChatMessages((prev) => [...prev, { role: 'assistant', content: 'Sorry, I had trouble processing that. Try again!' }]);
-    } finally {
-      setChatLoading(false);
     }
   };
 
@@ -316,17 +303,24 @@ function MarketMake() {
                       <label className="block text-xs text-[#64748b] uppercase tracking-wider mb-2">
                         Levels per side: <span className="text-[#3eddfd]">{levels}</span>
                       </label>
-                      <input
-                        type="range"
-                        min="1"
-                        max="10"
-                        value={levels}
-                        onChange={(e) => setLevels(parseInt(e.target.value))}
-                        className="w-full accent-[#3eddfd]"
-                      />
-                      <div className="flex justify-between text-xs text-[#64748b] mt-1">
-                        <span>1</span><span>5</span><span>10</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[1, 2].map((lvl) => (
+                          <button
+                            key={lvl}
+                            onClick={() => setLevels(lvl)}
+                            className={`py-2.5 rounded-lg text-sm font-medium transition-all ${
+                              levels === lvl
+                                ? 'bg-[#3eddfd]/10 border border-[#3eddfd]/50 text-[#3eddfd]'
+                                : 'bg-[#0f172a] border border-[#334155] text-[#94a3b8] hover:border-[#3eddfd]/30'
+                            }`}
+                          >
+                            {lvl} {lvl === 1 ? 'level' : 'levels'}
+                          </button>
+                        ))}
                       </div>
+                      <p className="mt-2 text-xs text-[#64748b]">
+                        Batch deploy: {levels * 2} orders per transaction
+                      </p>
                     </div>
 
                     {/* Total Amount */}
@@ -366,49 +360,19 @@ function MarketMake() {
                     )}
                   </div>
 
-                  {/* AI Chat */}
-                  <div className="bg-gradient-to-br from-[#1e293b] to-[#0f172a] border border-[#334155] rounded-2xl p-6 md:p-8">
-                    <h2 className="text-lg font-bold text-[#f8fafc] mb-4 flex items-center gap-2">
-                      <span className="text-lg">🤖</span> AI Assistant
-                    </h2>
-                    <div className="h-64 overflow-y-auto space-y-3 mb-4 pr-2 scrollbar-thin">
-                      {chatMessages.map((msg, i) => (
-                        <div key={i} className={`text-sm ${msg.role === 'user' ? 'text-right' : ''}`}>
-                          <div className={`inline-block max-w-[85%] px-4 py-2.5 rounded-xl text-sm leading-relaxed ${
-                            msg.role === 'user'
-                              ? 'bg-[#3eddfd]/10 text-[#cbd5e1] border border-[#3eddfd]/20'
-                              : 'bg-[#0f172a] text-[#94a3b8] border border-[#334155]'
-                          }`}>
-                            {msg.content.split('**').map((part, j) =>
-                              j % 2 === 1 ? <strong key={j} className="text-[#f8fafc]">{part}</strong> : part
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                      {chatLoading && (
-                        <div className="text-sm text-[#64748b] flex items-center gap-2">
-                          <div className="w-3 h-3 border border-[#3eddfd] border-t-transparent rounded-full animate-spin" />
-                          Thinking...
-                        </div>
-                      )}
+                  {/* AI Strategy Card */}
+                  {aiResult && (
+                    <div className="bg-gradient-to-br from-[#1e293b] to-[#0f172a] border border-[#334155] rounded-2xl p-6 md:p-8">
+                      <h2 className="text-lg font-bold text-[#f8fafc] mb-4 flex items-center gap-2">
+                        <span className="text-lg">🤖</span> AI Analysis
+                      </h2>
+                      <div className="text-sm text-[#94a3b8] whitespace-pre-line leading-relaxed">
+                        {aiResult.reasoning.split('**').map((part, j) =>
+                          j % 2 === 1 ? <strong key={j} className="text-[#f8fafc]">{part}</strong> : part
+                        )}
+                      </div>
                     </div>
-                    <form onSubmit={handleChatSubmit} className="flex gap-2">
-                      <input
-                        type="text"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        placeholder="Ask about strategy..."
-                        className="flex-1 py-2.5 px-4 bg-[#0f172a] border border-[#334155] rounded-lg text-[#f8fafc] text-sm focus:border-[#3eddfd]/50 focus:outline-none"
-                      />
-                      <button
-                        type="submit"
-                        disabled={chatLoading || !chatInput.trim()}
-                        className="px-4 py-2.5 bg-[#3eddfd]/10 border border-[#3eddfd]/30 text-[#3eddfd] rounded-lg hover:bg-[#3eddfd]/20 transition-all disabled:opacity-50 text-sm"
-                      >
-                        Send
-                      </button>
-                    </form>
-                  </div>
+                  )}
                 </div>
 
                 {/* Right: AI Result + Orders */}
@@ -457,16 +421,6 @@ function MarketMake() {
                             ))}
                           </tbody>
                         </table>
-                      </div>
-
-                      {/* AI Reasoning */}
-                      <div className="bg-[#0f172a] border border-[#334155] rounded-xl p-4 mb-6">
-                        <p className="text-xs text-[#64748b] uppercase tracking-wider mb-2">AI Analysis</p>
-                        <div className="text-sm text-[#94a3b8] whitespace-pre-line leading-relaxed">
-                          {aiResult.reasoning.split('**').map((part, j) =>
-                            j % 2 === 1 ? <strong key={j} className="text-[#f8fafc]">{part}</strong> : part
-                          )}
-                        </div>
                       </div>
 
                       {/* Deploy Results */}

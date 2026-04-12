@@ -354,6 +354,92 @@ class ContractService {
     return { onChainSuccess, error: errorMessage };
   }
 
+  // ─── Batch Order Operations ────────────────────────────────────────────────
+
+  /**
+   * Create orders in batch (2 or 4 orders at once via batchCreateOrders2/4)
+   * Accepts an array of order params and dispatches to the appropriate batch function.
+   */
+  async createOrderBatch(
+    orderParams: Array<{ pair: string; direction: string; price: bigint; amount: bigint }>,
+  ): Promise<Array<{ orderId: string; onChainSuccess: boolean; error?: string }>> {
+    const providers = this.ensureProviders();
+    const contract = this.ensureContract();
+
+    if (orderParams.length !== 2 && orderParams.length !== 4) {
+      throw new Error('Batch must contain exactly 2 or 4 orders');
+    }
+
+    // Prepare all orders with nonces and save to DB
+    const preparedOrders = orderParams.map((params) => {
+      const counter = this.getNextOrderCounter();
+      const orderId = toHex(calculateOrderId(counter));
+      const nonce = generateNonce();
+      const nonceHex = nonceToHex(nonce);
+
+      // Save to database first (optimistic)
+      db.saveOrder({
+        orderId,
+        orderCounter: counter,
+        nonce: nonceHex,
+        pair: params.pair,
+        direction: params.direction,
+        price: params.price.toString(),
+        amount: params.amount.toString(),
+        status: 'pending',
+      });
+
+      return {
+        orderId,
+        pair: encodePair(params.pair),
+        direction: encodeDirection(params.direction),
+        price: params.price,
+        amount: params.amount,
+        nonce,
+      };
+    });
+
+    // Build the batch call params
+    const batchParams = preparedOrders.map((o) => ({
+      pair: o.pair,
+      direction: o.direction,
+      price: o.price,
+      amount: o.amount,
+      nonce: o.nonce,
+    }));
+
+    let onChainSuccess = false;
+    let errorMessage: string | undefined;
+
+    try {
+      if (batchParams.length === 2) {
+        await api.createOrderBatch2(providers, contract, batchParams);
+      } else {
+        await api.createOrderBatch4(providers, contract, batchParams);
+      }
+      onChainSuccess = true;
+
+      // Update all orders to active
+      for (const o of preparedOrders) {
+        db.updateOrderStatus(o.orderId, 'active');
+      }
+    } catch (error: any) {
+      errorMessage = error?.message || String(error);
+      console.error('On-chain batchCreateOrders failed:', errorMessage);
+
+      // Update all orders to failed
+      for (const o of preparedOrders) {
+        db.updateOrderStatus(o.orderId, 'failed');
+      }
+    }
+
+    return preparedOrders.map((o) => ({
+      orderId: o.orderId,
+      onChainSuccess,
+      error: errorMessage,
+    }));
+  }
+
   // ─── Query Operations ───────────────────────────────────────────────────
 
   /**
