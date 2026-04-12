@@ -9,9 +9,13 @@ At the core is AI-powered market making. AI agents generate and manage dynamic o
 - **Live on Midnight Preprod** — contract deployed and callable on preprod with real shielded transactions
 - **AI order ladder generation** — market-making agents auto-create and refresh bid/ask spreads from FX feeds
 - **Non-AMM execution — zero slippage** — exact-price matching, no curve-based pricing or front-running
-- **Fully shielded via ZK commitments** — order details never leave the proof; only hashes go on-chain
 - **Atomic Zswap matching + price improvement** — cross-spread trades settle atomically via Zswap shielded transfers; bidders get the better rate
 - **Native partial fills** — remainder orders created automatically, preserving capital efficiency
+
+## Quick Links
+
+- [5-min Video Demo](https://drive.google.com/file/d/1pFQNdtphlIgGs_-8hJDnSvqLJFNrTu5k/view?usp=drive_link)
+- [Live URL](https://innermost-midnight.vercel.app/)
 
 ## Project Structure
 
